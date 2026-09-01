@@ -1,0 +1,33 @@
+import { test, expect, devices } from '@playwright/test'
+const BASE='https://pos-system-pearl-six.vercel.app'
+test.use({ ...devices['iPhone 13'] })
+test('Inventory is mobile responsive', async ({ page }) => {
+  test.setTimeout(120000)
+  await page.goto(`${BASE}/login`,{waitUntil:'domcontentloaded',timeout:120000})
+  await page.fill('#username','admin')
+  await page.fill('#password','admin123')
+  await page.getByRole('button',{name:'Sign In'}).click()
+  await page.waitForURL('**/dashboard',{timeout:60000})
+  await page.getByRole('button',{name:'Toggle sidebar'}).click()
+  await page.locator('nav').getByText('Inventory',{exact:true}).click()
+  await page.waitForURL('**/inventory',{timeout:60000})
+  await expect(page.getByRole('button',{name:'New Ingredient'})).toBeVisible({timeout:30000})
+  await expect(page.getByRole('button',{name:'Stock In'}).first()).toBeVisible({timeout:10000})
+  console.log('URL_AFTER', page.url())
+  await page.waitForTimeout(500)
+  const heading = await page.getByText('Inventory Management').count()
+  const stockIn = await page.getByRole('button',{name:'Stock In'}).count()
+  const newIng = await page.getByRole('button',{name:'New Ingredient'}).count()
+  console.log('HEADING', heading, 'STOCKIN', stockIn, 'NEWING', newIng)
+  // Desktop table must be HIDDEN on mobile (CSS toggling), cards visible
+  await expect(page.locator('table').first()).toBeHidden({timeout:10000})
+  // Mobile card "Stock In" button must be VISIBLE
+  await expect(page.getByRole('button',{name:'Stock In'}).first()).toBeVisible({timeout:10000})
+  const hasOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
+  console.log('HAS_H_OVERFLOW', hasOverflow)
+  expect(heading).toBeGreaterThan(0)
+  expect(newIng).toBeGreaterThan(0)
+  expect(stockIn).toBeGreaterThan(0)
+  expect(hasOverflow).toBe(false)
+  console.log('INVENTORY_MOBILE_OK')
+})

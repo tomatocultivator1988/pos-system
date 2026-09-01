@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bean Brewyage — User Manual</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 18mm 16mm;
+  }
+  :root {
+    --accent: #7c4a1e;
+    --accent-soft: #f3e9dd;
+    --ink: #1f1f1f;
+    --muted: #6b6b6b;
+    --line: #e5e0d8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    font-size: 10.5pt;
+    line-height: 1.5;
+  }
+  .cover {
+    page-break-after: always;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .cover .brand {
+    font-size: 40pt;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -1px;
+  }
+  .cover .subtitle {
+    font-size: 18pt;
+    color: var(--ink);
+    margin-top: 8px;
+  }
+  .cover .version {
+    font-size: 11pt;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .cover .hr {
+    width: 120px; height: 3px; background: var(--accent);
+    margin: 28px auto;
+    border-radius: 2px;
+  }
+  .cover .meta {
+    font-size: 10pt; color: var(--muted); margin-top: 40px;
+  }
+  h1 {
+    font-size: 20pt;
+    color: var(--accent);
+    margin: 0 0 4px 0;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 6px;
+    page-break-after: avoid;
+  }
+  h2 {
+    font-size: 13pt;
+    margin: 20px 0 6px 0;
+    color: var(--accent);
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11pt;
+    margin: 14px 0 4px 0;
+    page-break-after: avoid;
+  }
+  p { margin: 4px 0 8px 0; }
+  section { page-break-before: always; }
+  section:first-of-type { page-break-before: auto; }
+  ul, ol { margin: 4px 0 10px 0; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 14px 0;
+    font-size: 9.5pt;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .toc {
+    page-break-after: always;
+  }
+  .toc ol { list-style: none; padding-left: 0; }
+  .toc li {
+    padding: 5px 0;
+    border-bottom: 1px dotted var(--line);
+    font-size: 11pt;
+  }
+  .toc .num { color: var(--accent); font-weight: 700; margin-right: 8px; }
+  .callout {
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    padding: 8px 12px;
+    border-radius: 0 4px 4px 0;
+    margin: 8px 0;
+  }
+  .callout strong { color: var(--accent); }
+  code, kbd {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 9pt;
+    background: #f2efe9;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--line);
+  }
+  .kbd-row { margin: 6px 0; }
+  .footer-note { font-size: 8.5pt; color: var(--muted); margin-top: 12px; }
+  .avoid-break { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<div class="cover">
+  <div class="brand">Bean Brewyage</div>
+  <div class="subtitle">Point-of-Sale &amp; Inventory System</div>
+  <div class="hr"></div>
+  <div class="subtitle" style="font-weight:600;">User Manual</div>
+  <div class="meta">
+    Version 1.0 &nbsp;·&nbsp; Last updated 2026<br>
+    Covers POS · Kitchen Display · Sales · Reports · Inventory · Menu · Customers · Settings
+  </div>
+</div>
+
+<!-- ===================== TOC ===================== -->
+<div class="toc">
+  <h1>Table of Contents</h1>
+  <ol>
+    <li><span class="num">1.</span> Getting Started &amp; Login</li>
+    <li><span class="num">2.</span> User Roles &amp; Access</li>
+    <li><span class="num">3.</span> Dashboard</li>
+    <li><span class="num">4.</span> POS Terminal</li>
+    <li><span class="num">5.</span> Kitchen Display System (Orders)</li>
+    <li><span class="num">6.</span> Sales History</li>
+    <li><span class="num">7.</span> Reports</li>
+    <li><span class="num">8.</span> Inventory</li>
+    <li><span class="num">9.</span> Menu Management</li>
+    <li><span class="num">10.</span> Customers &amp; Loyalty</li>
+    <li><span class="num">11.</span> Settings &amp; Receipt Printer</li>
+    <li><span class="num">12.</span> Receipts &amp; Printing</li>
+    <li><span class="num">13.</span> Troubleshooting</li>
+  </ol>
+</div>
+
+<!-- ===================== 1 ===================== -->
+<section>
+  <h1>1. Getting Started &amp; Login</h1>
+  <p>Bean Brewyage is a web-based point-of-sale system for a café. It runs in any modern browser (Chrome or Edge recommended — Chrome/Edge is required for the receipt printer).</p>
+  <ol>
+    <li>Open the application URL in your browser.</li>
+    <li>Enter your <strong>Username</strong> and <strong>Password</strong>.</li>
+    <li>Click <strong>Sign In</strong>. You are taken to your default screen (Dashboard for admins, the Orders screen for kitchen staff).</li>
+  </ol>
+  <div class="callout"><strong>Note:</strong> Sessions require re-login after closing the browser. Logging out requires confirmation (you must enter your PIN again on next login).</div>
+
+  <h2>Default accounts</h2>
+  <table>
+    <tr><th>Username</th><th>Password</th><th>Role</th></tr>
+    <tr><td><code>admin</code></td><td><code>admin123</code></td><td>Administrator</td></tr>
+    <tr><td><code>cashier1</code></td><td><code>1234</code></td><td>Cashier</td></tr>
+    <tr><td><code>kds1</code></td><td><code>kds123</code></td><td>Kitchen Staff</td></tr>
+  </table>
+  <div class="callout"><strong>Security:</strong> Change these default passwords after setup (see Section 11).</div>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section>
+  <h1>2. User Roles &amp; Access</h1>
+  <p>The system has three roles. Each role only sees the screens it is allowed to use.</p>
+  <table>
+    <tr><th>Role</th><th>Access</th><th>Description</th></tr>
+    <tr><td><strong>Admin</strong></td><td>Everything</td><td>Full control: dashboard, POS, inventory, menu, customers, orders, sales, reports, settings.</td></tr>
+    <tr><td><strong>Cashier</strong></td><td>POS · Customers · Orders</td><td>Runs sales and can view customers and the kitchen screen. Cannot open dashboard, reports, or settings.</td></tr>
+    <tr><td><strong>KDS</strong> (kitchen)</td><td>Orders only</td><td>Sees only the Kitchen Display System. Any other page redirects back to Orders.</td></tr>
+  </table>
+  <p>The sidebar navigation automatically hides items the current role cannot access.</p>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section>
+  <h1>3. Dashboard</h1>
+  <p>The dashboard is the administrator's home screen and shows a live summary of the business.</p>
+  <h2>Cards</h2>
+  <table>
+    <tr><th>Card</th><th>What it shows</th></tr>
+    <tr><td><strong>Today's Sales</strong></td><td>Total revenue for the current business day.</td></tr>
+    <tr><td><strong>Transactions</strong></td><td>Number of sales recorded today.</td></tr>
+    <tr><td><strong>Inventory Value</strong></td><td>Total value of stock on hand.</td></tr>
+    <tr><td><strong>7-Day Sales Trend</strong></td><td>Line chart of the last 7 days of sales.</td></tr>
+    <tr><td><strong>Best Selling</strong></td><td>Top products by quantity sold.</td></tr>
+    <tr><td><strong>Stock Alerts</strong></td><td>List of items that are low or out of stock.</td></tr>
+  </table>
+  <p>The dashboard also shows the <strong>Cash vs GCash</strong> split for today's sales. Use the <strong>View Reports</strong> button to jump to detailed reports.</p>
+</section>
+
+<!-- ===================== 4 ===================== -->
+<section>
+  <h1>4. POS Terminal</h1>
+  <p>The POS Terminal is where sales are rung up.</p>
+
+  <h2>Finding an item</h2>
+  <ul>
+    <li>Type in the <strong>Search items…</strong> box to filter the menu.</li>
+    <li>Click a <strong>category</strong> to show only items in that category.</li>
+    <li>Click an item card to add it.</li>
+  </ul>
+
+  <h2>Variants &amp; add-ons</h2>
+  <p>When an item has options, a dialog opens:</p>
+  <ul>
+    <li><strong>Variant</strong> — choose the size/type (e.g. <em>12oz Iced</em>). The price updates automatically.</li>
+    <li><strong>Add-ons</strong> — tick any extra items (e.g. extra shot, syrup). Required add-on groups must have at least one selection.</li>
+    <li>Click <strong>Add to Cart</strong> to confirm.</li>
+  </ul>
+
+  <h2>Cart controls</h2>
+  <ul>
+    <li>Use <code>+</code> / <code>−</code> to change the quantity of a line item.</li>
+    <li>Use the trash icon to remove a line.</li>
+    <li><strong>Clear Cart</strong> empties the whole order.</li>
+  </ul>
+
+  <h2>Customer (optional)</h2>
+  <p>Tap <strong>+ Select Customer</strong> to attach a customer to the sale and earn loyalty points (see Section 10).</p>
+
+  <h2>Checkout</h2>
+  <ol>
+    <li>Click <strong>Checkout</strong>.</li>
+    <li>Choose a payment method:
+      <ul>
+        <li><strong>Cash</strong> — enter the amount tendered. Use the quick buttons (<code>+₱50</code>, <code>+₱100</code>, <code>+₱200</code>, <code>+₱500</code>, <code>+₱1000</code>) or <strong>Round Up</strong>. Change is calculated automatically.</li>
+        <li><strong>GCash</strong> — enter the GCash <strong>Reference #</strong>. The sale cannot be completed without a reference.</li>
+      </ul>
+    </li>
+    <li>Click <strong>Complete Sale</strong>, then confirm.</li>
+    <li>A receipt is shown (and sent to the printer if one is paired).</li>
+  </ol>
+  <div class="callout"><strong>Note:</strong> <strong>Complete Sale</strong> stays disabled until the amount tendered covers the total (cash) or a reference is entered (GCash).</div>
+</section>
+
+<!-- ===================== 5 ===================== -->
+<section>
+  <h1>5. Kitchen Display System (Orders)</h1>
+  <p>The Kitchen Display System (KDS) shows live orders for kitchen staff. It refreshes automatically.</p>
+
+  <h2>Order states</h2>
+  <table>
+    <tr><th>Column</th><th>Status</th><th>Action button</th></tr>
+    <tr><td>New Orders</td><td><strong>new</strong></td><td><strong>Start Preparing</strong></td></tr>
+    <tr><td>Preparing Orders</td><td><strong>preparing</strong></td><td><strong>Mark Ready</strong></td></tr>
+    <tr><td>Ready Orders</td><td><strong>ready</strong></td><td><strong>Complete</strong></td></tr>
+  </table>
+  <p>Each order card shows the <strong>order number</strong>, an elapsed timer since it was placed, the items and any add-ons, and the action button.</p>
+  <ol>
+    <li>Tap <strong>Start Preparing</strong> when the kitchen begins the order.</li>
+    <li>Tap <strong>Mark Ready</strong> when the order is done.</li>
+    <li>Tap <strong>Complete</strong> when the customer receives it.</li>
+  </ol>
+  <p>Completed orders move out of the active columns. A yellow banner appears when new orders are waiting.</p>
+</section>
+
+<!-- ===================== 6 ===================== -->
+<section>
+  <h1>6. Sales History</h1>
+  <p>The Sales screen lists every transaction with its status and payment details.</p>
+  <table>
+    <tr><th>Column</th><th>Description</th></tr>
+    <tr><td>Order #</td><td>Unique order number (format <code>ORD-YYYYMMDD-NNNNNN</code>).</td></tr>
+    <tr><td>Date &amp; Time</td><td>When the sale was made.</td></tr>
+    <tr><td>Items</td><td>Number of line items.</td></tr>
+    <tr><td>Total</td><td>Grand total paid.</td></tr>
+    <tr><td>Payment</td><td>Cash or GCash.</td></tr>
+  </table>
+
+  <h2>Actions</h2>
+  <ul>
+    <li><strong>View</strong> — open the full receipt.</li>
+    <li><strong>Void</strong> — cancel the sale (allowed only while it is <em>new</em> or <em>preparing</em>). Requires a reason.</li>
+    <li><strong>Refund</strong> — refund the sale (allowed unless it is already refunded). Requires a reason.</li>
+  </ul>
+  <div class="callout"><strong>Note:</strong> Voiding or refunding a sale restores any stock that was deducted from inventory.</div>
+</section>
+
+<!-- ===================== 7 ===================== -->
+<section>
+  <h1>7. Reports</h1>
+  <p>The Reports screen (admin only) has five tabs, each with its own summary and a <strong>CSV</strong> export button for spreadsheets.</p>
+  <table>
+    <tr><th>Tab</th><th>Shows</th></tr>
+    <tr><td><strong>Sales</strong></td><td>Total sales, orders list, payment split.</td></tr>
+    <tr><td><strong>Expenses</strong></td><td>Total expenses and breakdown by category.</td></tr>
+    <tr><td><strong>Inventory Usage</strong></td><td>Ingredient consumption and stock movement.</td></tr>
+    <tr><td><strong>Voids/Refunds</strong></td><td>Voided and refunded orders with reasons.</td></tr>
+    <tr><td><strong>Customers</strong></td><td>Top customers by spend and loyalty activity.</td></tr>
+  </table>
+  <p>Click <strong>CSV</strong> on any tab to download that report as a spreadsheet file.</p>
+</section>
+
+<!-- ===================== 8 ===================== -->
+<section>
+  <h1>8. Inventory</h1>
+  <p>The Inventory screen tracks ingredients and stock levels.</p>
+
+  <h2>Viewing stock</h2>
+  <ul>
+    <li>Use the search box to find an ingredient.</li>
+    <li>Filter by <strong>All Items</strong>, <strong>Low Stock</strong>, or <strong>Out of Stock</strong>.</li>
+    <li>The table shows quantity on hand, unit, unit cost, reorder level, and total value.</li>
+  </ul>
+
+  <h2>Adding an ingredient</h2>
+  <ol>
+    <li>Click <strong>New Ingredient</strong>.</li>
+    <li>Enter the <strong>name</strong>, <strong>unit</strong> (g, ml, pcs, etc.), and <strong>reorder level</strong>.</li>
+    <li>Click <strong>Create</strong>.</li>
+  </ol>
+
+  <h2>Adjusting stock</h2>
+  <ol>
+    <li>Click <strong>Adjust</strong> on an ingredient row.</li>
+    <li>Enter a <strong>Delta (+/−)</strong> and a <strong>Reason</strong>.</li>
+    <li>Click <strong>Apply</strong>. Stock is updated and a movement is logged.</li>
+  </ol>
+
+  <h2>Movement Log &amp; Daily Usage</h2>
+  <p>Switch tabs between <strong>Stock</strong>, <strong>Movement Log</strong> (every change to stock), and <strong>Daily Usage</strong> (consumption per day).</p>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section>
+  <h1>9. Menu Management</h1>
+  <p>The Menu screen manages products, variants, add-ons, and recipes.</p>
+
+  <h2>Creating / editing an item</h2>
+  <ol>
+    <li>Click <strong>New Item</strong> (or <strong>Edit</strong> on an existing card).</li>
+    <li>Fill in the <strong>name</strong>, <strong>category</strong>, <strong>price</strong>, and <strong>loyalty points earned</strong>.</li>
+    <li>Optional: upload an image.</li>
+    <li>Tick <strong>Send to KDS</strong> if the item should appear in the kitchen display.</li>
+    <li>Tick <strong>Active</strong> to make it available at the POS.</li>
+    <li>Click <strong>Create</strong> / <strong>Save</strong>.</li>
+  </ol>
+
+  <h2>Recipe &amp; Options dialog</h2>
+  <p>Click <strong>Recipe</strong> on a card to manage:</p>
+  <ul>
+    <li><strong>Variants</strong> — sizes/types. Each variant can <em>Override</em> the base price or <em>Adjust</em> by a fixed amount.</li>
+    <li><strong>Add-on Groups</strong> — groups of extras (required or optional).</li>
+    <li><strong>Recipe</strong> — ingredients consumed per item, variant, or add-on (used for stock deduction).</li>
+  </ul>
+
+  <h2>Deactivate / Reactivate</h2>
+  <p>Use the trash icon to <strong>deactivate</strong> an item (hides it from the POS). Use <strong>Show Inactive</strong> to see deactivated items and <strong>Reactivate</strong> them.</p>
+</section>
+
+<!-- ===================== 10 ===================== -->
+<section>
+  <h1>10. Customers &amp; Loyalty</h1>
+  <p>The Customers screen tracks customer profiles and loyalty points.</p>
+  <ul>
+    <li>Click <strong>New Customer</strong>, enter the <strong>name</strong> and optional <strong>mobile number</strong> / <strong>email</strong>, then <strong>Create</strong>.</li>
+    <li>Each customer gets a <strong>member number</strong> automatically.</li>
+    <li>Use the search box to find a customer.</li>
+  </ul>
+  <p>When a customer is attached to a sale at the POS, they earn loyalty points based on the items purchased. The receipt shows the points earned.</p>
+</section>
+
+<!-- ===================== 11 ===================== -->
+<section>
+  <h1>11. Settings &amp; Receipt Printer</h1>
+  <p>The Settings screen (admin only) configures the store and the hardware.</p>
+
+  <h2>Store Information</h2>
+  <p>Business name, phone, address — shown on receipts.</p>
+
+  <h2>Business Settings</h2>
+  <ul>
+    <li><strong>Currency</strong> and <strong>Timezone</strong> (default: PHP, Asia/Manila).</li>
+    <li><strong>Tax rate</strong> applied to sales.</li>
+    <li><strong>Low-stock behavior</strong> — warn or block sales when an ingredient is out of stock.</li>
+  </ul>
+
+  <h2>Bluetooth Printer &amp; Cash Drawer</h2>
+  <p>Receipts print over Web Bluetooth (Chrome/Edge only). The cash drawer opens through the printer's RJ12 port or a USB drawer.</p>
+  <ul>
+    <li><strong>Pair Printer</strong> — connect a thermal receipt printer.</li>
+    <li><strong>Test Print</strong> — print a test receipt.</li>
+    <li><strong>Test Drawer</strong> — open the cash drawer.</li>
+  </ul>
+
+  <p>Click <strong>Save Settings</strong> to store all changes.</p>
+  <div class="callout"><strong>Note:</strong> "Not paired" is shown until a printer has been connected. Only Chrome/Edge support the printer — this is a browser limitation.</div>
+</section>
+
+<!-- ===================== 12 ===================== -->
+<section>
+  <h1>12. Receipts &amp; Printing</h1>
+  <p>Every sale produces a receipt showing:</p>
+  <ul>
+    <li>Business name, date &amp; time, and <strong>order number</strong>.</li>
+    <li>Items with quantities, variants, and add-ons.</li>
+    <li>Subtotal, tax, payment method, amount tendered, and change.</li>
+    <li>Loyalty points earned (if a customer was attached).</li>
+  </ul>
+  <p>If a printer is paired, the receipt prints automatically on checkout. You can also re-print from the <strong>Sales</strong> screen using the receipt view.</p>
+</section>
+
+<!-- ===================== 13 ===================== -->
+<section>
+  <h1>13. Troubleshooting</h1>
+  <h2>Can't sign in</h2>
+  <ul>
+    <li>Check the username and password are correct.</li>
+    <li>Make sure the browser session has not expired — refresh and sign in again.</li>
+  </ul>
+  <h2>Receipt printer not working</h2>
+  <ul>
+    <li>Confirm you are using <strong>Chrome or Edge</strong> (Web Bluetooth is required).</li>
+    <li>Re-pair the printer from <strong>Settings → Pair Printer</strong>.</li>
+    <li>Run <strong>Test Print</strong> to verify the connection.</li>
+  </ul>
+  <h2>Item won't add to the cart</h2>
+  <ul>
+    <li>Check the item is <strong>Active</strong> in Menu Management.</li>
+    <li>Check stock — an out-of-stock item may be blocked (depending on the low-stock setting).</li>
+  </ul>
+  <h2>Order missing from the kitchen screen</h2>
+  <ul>
+    <li>Confirm the item has <strong>Send to KDS</strong> enabled.</li>
+    <li>Refresh the Orders screen — it polls for updates automatically.</li>
+  </ul>
+  <p class="footer-note">Bean Brewyage — User Manual v1.0. For questions, contact your system administrator.</p>
+</section>
+
+</body>
+</html>
