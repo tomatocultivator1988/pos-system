@@ -1,154 +1,48 @@
-# GreenPOS - Modern Point of Sale System
+# Bean Brewyage POS
 
-A minimalistic, green-themed POS system built with **Next.js 16**, **React**, and **Tailwind CSS**. The design follows modern Scandinavian UI principles with generous whitespace, restrained effects, and clear visual hierarchy.
+A point-of-sale system for a coffee shop, built with **Next.js (App Router)**, **React**, **Tailwind CSS**, and **Supabase** (Postgres + Storage). PWA-enabled with offline sale queueing and Bluetooth thermal-printer support.
 
-## Design System
+## Modules
 
-### Color Palette
-- **Background**: Off-white (`#fafbf9`)
-- **Accent (Green)**: `hsl(140 71% 45%)` - Primary action color
-- **Neutrals**: White, light grays for cards and backgrounds
-- **Text**: Dark green-tinted foreground for natural readability
+| Page | Route | Access | Purpose |
+| --- | --- | --- | --- |
+| Dashboard | `/dashboard` | admin | Today's sales, 7-day trend, payment split, stock alerts, best/least sellers |
+| POS Terminal | `/pos` | admin, cashier | Cart, variants/add-ons, discounts (SC/PWD 20%, Employee 10%), payments (cash, GCash, BPI, UnionBank), receipts, offline mode |
+| Inventory | `/inventory` | admin | Ingredients, stock receipts (weighted-average costing), adjustments/waste, movement log, daily usage |
+| Menu | `/menu` | admin | Items, categories, variants, add-on groups, recipes (per item / variant / add-on), images |
+| Customers | `/customers` | admin, cashier | Customer profiles, loyalty balances, admin point adjustments |
+| Orders (KDS) | `/orders` | admin, cashier, kds | Kitchen display, status transitions (new → preparing → ready → completed) |
+| Sales | `/sales` | admin | Sales history, receipts, void/refund with inventory + loyalty reversal |
+| Expenses | `/expenses` | admin | Expense entry by category; feeds the Expenses report |
+| Reports | `/reports`, `/reports/{items,category,payment}` | admin (items/category/payment), admin+cashier (main) | Sales, expenses, inventory usage, voids/refunds, customer spend, per-item/category/payment profit |
+| Settings | `/settings` | admin | Store info, tax rate, business-day cutoff, printer & cash drawer |
 
-### Typography
-- **Font**: Geist (optimized for web)
-- **Spacing**: Strict 8px scale
-- **Corners**: 12-16px radius for cards and buttons
-- **Animations**: Fast (150-200ms), subtle and purposeful
+## Key behaviors
 
-### Key Features
-- Clean, airy layouts with abundant whitespace
-- Soft borders and rounded corners
-- Very light, infrequent shadows
-- Clear visual hierarchy
-- Premium feel through clarity, not decoration
+- **Money is computed server-side.** `complete_sale_v1` (Postgres RPC) re-prices every line from current menu data, computes tax/discount/totals, deducts ingredient stock atomically (row locks), enforces add-on group rules, and handles idempotency. The client never dictates totals — including for offline replays.
+- **Idempotent operations.** Checkout, void, and refund all take an idempotency key; retries return the original result.
+- **Void vs refund.** Only `new`/`preparing` orders can be voided (stock is restored only when the kitchen hasn't started); only `ready`/`completed` orders can be refunded (stock always restored). Both reverse loyalty points and leave a full audit trail.
+- **Offline mode.** When the network drops, sales are queued in `localStorage` and replayed when back online. Replay uses the original `sold_at` for the business date, but the server recomputes all amounts. Failed replays stay queued (with attempt counters) until discarded with confirmation or force-retried.
+- **Business day.** Orders/payments/receipts get their business date from `business_settings.timezone` + `business_day_cutoff_time` — honored both in the DB (`get_business_date`) and by server actions (`lib/business-date-server.ts`).
+- **Auth.** Session cookies (SHA-256-hashed server-side, 24h), role gates: `admin`, `cashier`, `kds`. Origin-checked CSRF protection on `/api/*` via middleware.
 
-## Project Structure
-
-```
-├── app/
-│   ├── page.tsx              # Dashboard (Main)
-│   ├── terminal/page.tsx     # POS Terminal (Checkout)
-│   ├── inventory/page.tsx    # Inventory Management
-│   ├── layout.tsx            # Root layout with Geist font
-│   └── globals.css           # Tailwind v4 theme tokens
-├── components/
-│   ├── header.tsx            # Top navigation bar
-│   ├── navigation.tsx        # Left sidebar navigation
-│   ├── stat-card.tsx         # KPI stat display card
-│   └── dashboard-card.tsx    # Reusable card wrapper
-└── package.json
-```
-
-## Pages
-
-### 1. Dashboard (`/`)
-Main overview with:
-- Welcome greeting
-- Key metrics (Today's Sales, Active Orders, Inventory, Customers)
-- Weekly sales trend chart (Line chart)
-- Inventory status chart (Bar chart)
-- Quick action cards for common tasks
-
-### 2. POS Terminal (`/terminal`)
-Interactive checkout interface:
-- Product grid with 12 sample items (responsive)
-- Real-time cart with add/remove/quantity controls
-- Order summary with subtotal, tax, and total
-- Payment method selection (Cash/Card)
-- Fully functional cart calculations
-
-### 3. Inventory Management (`/inventory`)
-Stock management dashboard:
-- Search by product name or SKU
-- Filter by stock status (In Stock, Low Stock, Out of Stock)
-- Full product table with stock levels, prices, and status badges
-- Summary statistics at the bottom
-- Color-coded status indicators
-
-## Getting Started
-
-### Installation
+## Getting started
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Start development server
-pnpm dev
+cp .env.example .env.local   # fill in Supabase URL + keys
+pnpm dev                     # http://localhost:3000
 ```
 
-The app will be available at `http://localhost:3000`
+Database migrations live in `supabase/migrations` (apply in order; 00015 is the latest). Seed data (demo menu, admin/cashier users) is in `00003_seed.sql` — **default credentials are public knowledge, change them before any real deployment.**
 
-### Build for Production
+## Tech stack
 
-```bash
-pnpm build
-pnpm start
-```
+- Next.js App Router + React server actions + API routes
+- Tailwind CSS v4, Recharts, Lucide icons
+- Supabase Postgres (all business logic in SECURITY DEFINER RPCs), Storage for menu images
+- Web Bluetooth / WebUSB for thermal printers and cash drawers; service worker PWA
 
-## Color Theme
+## Testing
 
-The theme is defined in `app/globals.css` using CSS custom properties:
-
-```css
---background: oklch(0.995 0 0);        /* Off-white */
---foreground: oklch(0.2 0.02 160);     /* Dark green-tinted text */
---accent: oklch(0.6 0.2 160);          /* Vibrant green */
---card: oklch(1 0 0);                  /* White */
---muted: oklch(0.94 0 0);              /* Light gray */
---border: oklch(0.91 0 0);             /* Subtle borders */
-```
-
-## Responsive Design
-
-All pages are mobile-first and responsive:
-- Mobile: Single column layouts
-- Tablet (md breakpoint): 2-3 columns
-- Desktop (lg breakpoint): Full multi-column layouts
-
-## Interactive Features
-
-- **Navigation**: Active state highlighting for current page
-- **Cart Management**: Add, remove, update quantities with real-time calculations
-- **Search & Filter**: Live filtering on inventory page
-- **Payment Selection**: Interactive toggle between payment methods
-- **Hover Effects**: Subtle transitions and state changes
-
-## Tech Stack
-
-- **Framework**: Next.js 16 (App Router)
-- **Styling**: Tailwind CSS v4 with custom theme tokens
-- **Charts**: Recharts for data visualization
-- **Icons**: Lucide React
-- **Font**: Geist from Google Fonts
-- **State Management**: React hooks (useState)
-
-## Components
-
-### Header
-Top navigation bar with GreenPOS branding and action buttons (notifications, settings, logout).
-
-### Navigation
-Left sidebar with 6 main sections: Dashboard, POS Terminal, Inventory, Reports, Customers, Settings. Active states indicated with green accent.
-
-### StatCard
-Displays key metrics with icon, value, and change indicator (positive/negative).
-
-### DashboardCard
-Wrapper component for chart containers with title and subtitle.
-
-## Future Enhancements
-
-- Backend integration with Neon/Supabase
-- Real database for products and transactions
-- User authentication
-- Receipt printing
-- Additional reports (Profit, Receivables, etc.)
-- Customer management
-- Multi-store support
-- Dark mode variant
-
-## License
-
-MIT
+Playwright e2e specs are in `tests/` (`npx playwright test`), covering checkout, add-ons, discounts, payment methods, recipe deduction, inventory, offline queueing, and full system flows.

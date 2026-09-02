@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth/session'
-import { getBusinessDate } from '@/lib/business-date'
+import { getBusinessDateServer } from '@/lib/business-date-server'
 
 export async function getIngredients(search?: string) {
   await requireRole(['admin'])()
@@ -72,7 +72,7 @@ export async function createStockReceipt(
 ) {
   const user = await requireRole(['admin'])()
   const supabase = await createClient()
-  const bizDate = getBusinessDate()
+  const bizDate = await getBusinessDateServer()
 
   const payload = items.map(i => ({
     ingredient_id: i.ingredientId,
@@ -96,7 +96,7 @@ export async function createAdjustment(
 ) {
   const user = await requireRole(['admin'])()
   const supabase = await createClient()
-  const bizDate = getBusinessDate()
+  const bizDate = await getBusinessDateServer()
 
   const { error } = await supabase.rpc('create_inventory_adjustment_v1', {
     p_ingredient_id: ingredientId,
@@ -130,7 +130,7 @@ export async function getInventoryValuation() {
 export async function getDailyUsage(businessDate?: string) {
   await requireRole(['admin'])()
   const supabase = await createClient()
-  const bizDate = businessDate || getBusinessDate()
+  const bizDate = businessDate || await getBusinessDateServer()
 
   const { data } = await supabase
     .from('inventory_movements')

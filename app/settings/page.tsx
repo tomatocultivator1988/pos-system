@@ -14,11 +14,9 @@ export default function SettingsPage() {
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [taxRate, setTaxRate] = useState('')
-  const [serviceChargeRate, setServiceChargeRate] = useState('')
   const [currencyCode, setCurrencyCode] = useState('PHP')
   const [timezone, setTimezone] = useState('Asia/Manila')
   const [cutoffTime, setCutoffTime] = useState('00:00')
-  const [lowStockBehavior, setLowStockBehavior] = useState<'warn' | 'block'>('warn')
   const { showConfirmation, hideConfirmation } = useModal()
 
   const [printerName, setPrinterName] = useState('')
@@ -78,11 +76,9 @@ export default function SettingsPage() {
         setAddress(s.address)
         setPhone(s.phone)
         setTaxRate(String(s.tax_rate))
-        setServiceChargeRate(String(s.service_charge_rate))
         setCurrencyCode(s.currency_code)
         setTimezone(s.timezone)
         setCutoffTime(s.business_day_cutoff_time)
-        setLowStockBehavior(s.default_low_stock_behavior as 'warn' | 'block')
       }
     }).catch((err: any) => {
       setLoadError(err.message || 'Failed to load settings')
@@ -102,11 +98,9 @@ export default function SettingsPage() {
             address,
             phone,
             tax_rate: Math.min(100, Math.max(0, parseFloat(taxRate) || 0)),
-            service_charge_rate: Math.min(100, Math.max(0, parseFloat(serviceChargeRate) || 0)),
             currency_code: currencyCode,
             timezone,
             business_day_cutoff_time: cutoffTime,
-            default_low_stock_behavior: lowStockBehavior,
           })
           hideConfirmation()
         } catch (err: any) {
@@ -210,16 +204,6 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium block mb-2">Service Charge Rate (%)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={serviceChargeRate}
-                onChange={(e) => setServiceChargeRate(e.target.value)}
-                className="w-full px-4 py-2 border border-border rounded-lg bg-background"
-              />
-            </div>
-            <div>
               <label className="text-sm font-medium block mb-2">Business Day Cutoff Time</label>
               <input
                 type="time"
@@ -227,17 +211,7 @@ export default function SettingsPage() {
                 onChange={(e) => setCutoffTime(e.target.value)}
                 className="w-full px-4 py-2 border border-border rounded-lg bg-background"
               />
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-2">Low Stock Behavior</label>
-              <select
-                value={lowStockBehavior}
-                onChange={(e) => setLowStockBehavior(e.target.value as 'warn' | 'block')}
-                className="w-full px-4 py-2 border border-border rounded-lg bg-background"
-              >
-                <option value="warn">Warn Only</option>
-                <option value="block">Block Sales</option>
-              </select>
+              <p className="text-xs text-muted-foreground mt-1">Sales made before this time count toward the previous business day.</p>
             </div>
           </div>
         </div>

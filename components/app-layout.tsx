@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/contexts/auth-context'
 import { useModal } from '@/lib/contexts/modal-context'
-import { LogOut, BarChart3, ShoppingCart, Package, Coffee, UtensilsCrossed, Users, FileText, Settings, Home, Menu, X, ShieldOff, PieChart, Layers, CreditCard } from 'lucide-react'
+import { LogOut, BarChart3, ShoppingCart, Package, Coffee, UtensilsCrossed, Users, FileText, Settings, Home, Menu, X, ShieldOff, PieChart, Layers, CreditCard, Receipt } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 const navItems = [
@@ -15,6 +15,7 @@ const navItems = [
   { icon: Users, label: 'Customers', href: '/customers', roles: ['admin', 'cashier'] },
   { icon: UtensilsCrossed, label: 'Orders', href: '/orders', roles: ['admin', 'cashier', 'kds'] },
   { icon: FileText, label: 'Sales', href: '/sales', roles: ['admin'] },
+  { icon: Receipt, label: 'Expenses', href: '/expenses', roles: ['admin'] },
   { icon: PieChart, label: 'Reports', href: '/reports', roles: ['admin', 'cashier'] },
   { icon: BarChart3, label: 'Sales by Item', href: '/reports/items', roles: ['admin'] },
   { icon: Layers, label: 'Sales by Category', href: '/reports/category', roles: ['admin'] },
@@ -25,15 +26,18 @@ const navItems = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { currentStaff, logout, isAuthenticated } = useAuth()
+  const { currentStaff, logout, isAuthenticated, authLoading } = useAuth()
   const { showConfirmation, hideConfirmation } = useModal()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Wait for the initial session check: on a full page load of a deep link
+    // (e.g. /pos), isAuthenticated is briefly false while /api/auth/me runs,
+    // and redirecting then bounces the user to /dashboard via the /login rule.
+    if (!authLoading && !isAuthenticated) {
       router.push('/login')
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, authLoading, router])
 
   useEffect(() => {
     setSidebarOpen(false)
@@ -41,15 +45,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Redirect KDS away from non-orders pages
   useEffect(() => {
-    if (currentStaff?.role === 'kds' && pathname !== '/orders') {
+    if (!authLoading && currentStaff?.role === 'kds' && pathname !== '/orders') {
       router.push('/orders')
     }
-  }, [currentStaff?.role, pathname, router])
+  }, [currentStaff?.role, pathname, router, authLoading])
 
   const isKds = currentStaff?.role === 'kds'
   const visibleNav = navItems.filter(item => !item.roles || item.roles.includes(currentStaff?.role || ''))
 
-  if (!isAuthenticated) {
+  if (authLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

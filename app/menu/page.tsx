@@ -224,7 +224,9 @@ export default function MenuPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(item => {
             const def = item.menu_item_variants?.find(v => v.is_default)
-            const price = def?.price_override ?? item.base_price
+            const price = def
+              ? (def.price_mode === 'override' ? (def.price_override ?? item.base_price) : item.base_price + (def.price_adjustment ?? 0))
+              : item.base_price
             return (
               <div key={item.id} className="bg-card border border-border rounded-xl p-4">
                 <div className="rounded-lg h-24 mb-3 overflow-hidden flex items-center justify-center bg-muted">{item.image_url ? <><img src={item.image_url} className="w-full h-24 object-cover" alt={item.name} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement!.querySelector('svg')!.style.display = 'block' }} /><ChefHat className="w-8 h-8 text-muted-foreground" style={{ display: 'none' }} /></> : <ChefHat className="w-8 h-8 text-muted-foreground" />}</div>

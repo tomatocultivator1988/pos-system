@@ -24,19 +24,40 @@ export async function createCustomer(data: {
   await requireRole(['admin', 'cashier'])()
   const supabase = await createClient()
 
-  let member_number = data.member_number
-  if (!member_number) {
-    const { data: last } = await supabase.from('customers').select('member_number').order('created_at', { ascending: false }).limit(1).maybeSingle()
-    const lastNum = last?.member_number ? parseInt((last.member_number as string).replace(/\D/g, '')) || 0 : 0
-    member_number = `MEM-${String(lastNum + 1).padStart(4, '0')}`
+  if (data.member_number) {
+    const { data: result, error } = await supabase
+      .from('customers')
+      .insert({ ...data, member_number: data.member_number })
+      .select()
+      .single()
+    if (error) throw new Error(error.message)
+    return result
   }
-  const { data: result, error } = await supabase
-    .from('customers')
-    .insert({ ...data, member_number })
-    .select()
-    .single()
-  if (error) throw new Error(error.message)
-  return result
+
+  // Two cashiers creating customers at once can compute the same next number;
+  // retry on the unique violation with a freshly-read counter.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: last } = await supabase
+      .from('customers')
+      .select('member_number')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const lastNum = last?.member_number ? parseInt((last.member_number as string).replace(/\D/g, '')) || 0 : 0
+    const member_number = `MEM-${String(lastNum + 1).padStart(4, '0')}`
+
+    const { data: result, error } = await supabase
+      .from('customers')
+      .insert({ name: data.name, mobile_number: data.mobile_number, email: data.email, member_number })
+      .select()
+      .single()
+
+    if (!error) return result
+    if (!error.message.includes('member_number') && !error.message.includes('duplicate')) {
+      throw new Error(error.message)
+    }
+  }
+  throw new Error('Could not allocate a member number — please try again')
 }
 
 export async function getCustomer(id: string) {
@@ -65,32 +86,19 @@ export async function adjustCustomerPoints(customerId: string, delta: number, re
   const user = await requireRole(['admin'])()
   const supabase = await createClient()
 
-  const { data: cust } = await supabase
-    .from('customers')
-    .select('loyalty_points_balance')
-    .eq('id', customerId)
-    .single()
-  if (!cust) throw new Error('Customer not found')
+  if (!Number.isInteger(delta) || delta === 0) {
+    throw new Error('Point delta must be a non-zero whole number')
+  }
 
-  const newBalance = Math.max(0, Number(cust.loyalty_points_balance) + delta)
-
-  const { error } = await supabase
-    .from('customers')
-    .update({ loyalty_points_balance: newBalance })
-    .eq('id', customerId)
+  // Atomic server-side: locks the customer row, clamps at zero, and logs the
+  // actually-applied delta so the balance reconciles with the ledger.
+  const { data, error } = await supabase.rpc('adjust_customer_points_v1', {
+    p_customer_id: customerId,
+    p_delta: delta,
+    p_reason: reason || null,
+    p_actor_user_id: user.id,
+  })
   if (error) throw new Error(error.message)
 
-  const { error: txErr } = await supabase
-    .from('loyalty_transactions')
-    .insert({
-      customer_id: customerId,
-      transaction_type: 'adjust',
-      points_delta: delta,
-      balance_after: newBalance,
-      reason: reason || null,
-      actor_user_id: user.id,
-    })
-  if (txErr) throw new Error(txErr.message)
-
-  return newBalance
+  return data?.balance ?? null
 }

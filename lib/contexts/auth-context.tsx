@@ -9,6 +9,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentStaff, setCurrentStaff] = useState<Staff | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
 
   const fetchUser = useCallback(async () => {
     try {
@@ -37,6 +38,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsAuthenticated(false)
         }
       }
+    } finally {
+      if (mountedRef.current) setAuthLoading(false)
     }
   }, [])
 
@@ -69,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ currentStaff, isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ currentStaff, isAuthenticated, authLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

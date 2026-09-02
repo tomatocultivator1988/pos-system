@@ -1,11 +1,18 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import AppLayout from '@/components/app-layout'
 import { useOrders } from '@/lib/contexts/orders-context'
 
 export default function OrdersPage() {
   const { orders, loading, updateOrderStatus, getActiveOrders } = useOrders()
   const activeOrders = getActiveOrders()
+  // Re-render every second so the elapsed timers stay live between polls.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
 
   const elapsed = (created: string) => {
     if (!created || isNaN(new Date(created).getTime())) return '--'

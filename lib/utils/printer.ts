@@ -198,6 +198,7 @@ function buildReceipt(data: ReceiptData): Uint8Array {
     parts.push(text(`Points Balance: ${data.pointsBalance}`), feed)
   }
 
+  parts.push(feed, center, bold, text('THIS IS NOT AN OFFICIAL RECEIPT'), feed, normal)
   parts.push(feed, center, text(data.footer), feed, feed, cut)
   return concat(...parts)
 }

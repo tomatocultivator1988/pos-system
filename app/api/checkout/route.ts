@@ -90,10 +90,8 @@ export async function POST(request: NextRequest) {
         amount_tendered: body.amount_tendered || null,
         offline_sync: body.offline_sync || false,
         sold_at: body.sold_at || null,
-        sold_subtotal: body.sold_subtotal || null,
-        sold_tax_total: body.sold_tax_total || null,
-        sold_grand_total: body.sold_grand_total || null,
-        sold_discount_total: body.sold_discount_total || null,
+        // Client-sent sold_* totals are deliberately NOT forwarded — the RPC
+        // recomputes all money server-side (see migration 00015).
         discount_type: body.discount_type || null,
       },
       p_actor_user_id: session.user_id,

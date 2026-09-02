@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import AppLayout from '@/components/app-layout'
 import { X, Printer, ChevronLeft, ChevronRight } from 'lucide-react'
 import { paymentLabel } from '@/lib/utils/payment-methods'
+import { getBusinessSettings } from '@/lib/actions/settings'
 
 export default function SalesPage() {
   const [sales, setSales] = useState<any[]>([])
@@ -13,6 +14,11 @@ export default function SalesPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const pageSize = 50
+  const [businessName, setBusinessName] = useState('Bean Brewyage')
+
+  useEffect(() => {
+    getBusinessSettings().then(s => { if (s?.business_name) setBusinessName(s.business_name) }).catch(() => {})
+  }, [])
 
   const [actionOpen, setActionOpen] = useState<{ sale: any; type: 'void' | 'refund' } | null>(null)
   const [actionReason, setActionReason] = useState('')
@@ -150,7 +156,9 @@ export default function SalesPage() {
               </div>
               <p className="text-sm text-muted-foreground mb-4">
                 {actionOpen.type === 'void'
-                  ? `Void ${actionOpen.sale.order_number} (₱${parseFloat(actionOpen.sale.grand_total).toFixed(2)})? This will mark the order voided and restore deducted ingredients.`
+                  ? (actionOpen.sale.status === 'new'
+                      ? `Void ${actionOpen.sale.order_number} (₱${parseFloat(actionOpen.sale.grand_total).toFixed(2)})? The payment will be voided and deducted ingredients will be restored (kitchen hasn't started).`
+                      : `Void ${actionOpen.sale.order_number} (₱${parseFloat(actionOpen.sale.grand_total).toFixed(2)})? The payment will be voided. The kitchen has started (status: ${actionOpen.sale.status}), so deducted ingredients will NOT be restored.`)
                   : `Refund ${actionOpen.sale.order_number} (₱${parseFloat(actionOpen.sale.grand_total).toFixed(2)})? Payment will be marked refunded and deducted ingredients will be restored.`}
               </p>
               <textarea
@@ -176,7 +184,8 @@ export default function SalesPage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 print:bg-white print:static">
             <div id="sales-receipt" className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl print:shadow-none print:max-w-full print:w-full max-h-[90vh] overflow-y-auto">
               <div className="text-center mb-4 pb-4 border-b border-dashed border-gray-300">
-                <h2 className="text-xl font-bold text-gray-900">Bean Brewyage</h2>
+                <h2 className="text-xl font-bold text-gray-900">{businessName}</h2>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mt-1">This is not an official receipt</p>
                 <p className="text-xs text-gray-500 mt-1">{formatDate(selectedSale.created_at)}</p>
                 <p className="text-lg font-semibold mt-2 text-gray-800">{selectedSale.order_number}</p>
                 {selectedSale.payment_status && <p className="text-xs text-gray-500 capitalize">{selectedSale.payment_status}</p>}

@@ -15,6 +15,7 @@ export default function InventoryPage() {
   const [valuation, setValuation] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'low' | 'out'>('all')
+  const [showInactive, setShowInactive] = useState(false)
   const { showConfirmation, hideConfirmation } = useModal()
 
   const [tab, setTab] = useState<'stock' | 'log'>('stock')
@@ -53,7 +54,13 @@ export default function InventoryPage() {
   const saveEdit = async () => {
     if (!editItem || editSaving) return
     setEditSaving(true)
-    try { await updateIngredient(editItem.id, { name: ingName, base_unit: ingUnit, reorder_level: parseFloat(ingReorder) || 0, weighted_average_unit_cost: parseFloat(ingCost) || 0 }); setEditOpen(false); getIngredients().then(setIngredients) } catch { /* handled by toast */ } finally { setEditSaving(false) }
+    try {
+      await updateIngredient(editItem.id, { name: ingName, base_unit: ingUnit, reorder_level: parseFloat(ingReorder) || 0, weighted_average_unit_cost: parseFloat(ingCost) || 0 })
+      setEditOpen(false)
+      getIngredients().then(setIngredients)
+    } catch (e: any) {
+      showConfirmation({ title: 'Error', description: e.message || 'Failed to save ingredient', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+    } finally { setEditSaving(false) }
   }
   const createIng = async () => {
     if (!ingName.trim() || ingSaving) return
@@ -70,7 +77,10 @@ export default function InventoryPage() {
   const saveRestock = async () => {
     if (!restockItem || restockSaving) return
     const qty = parseFloat(restockQty)
-    if (!qty || qty <= 0) return
+    if (!qty || qty <= 0) {
+      showConfirmation({ title: 'Invalid Quantity', description: 'Quantity received must be greater than 0.', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+      return
+    }
     setRestockSaving(true)
     try { await createStockReceipt([{ ingredientId: restockItem.id, quantity: qty, unitCost: parseFloat(restockCost) || 0 }]); setRestockOpen(false); getIngredients().then(setIngredients) } catch (e: any) { showConfirmation({ title: 'Error', description: e.message || 'Restock failed', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false }) } finally { setRestockSaving(false) }
   }
@@ -91,6 +101,7 @@ export default function InventoryPage() {
   }, [])
 
   const filteredItems = ingredients.filter(item => {
+    if (!showInactive && !item.is_active) return false
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase())
     const qty = Number(item.quantity_on_hand)
     const reorder = Number(item.reorder_level)
@@ -212,6 +223,14 @@ export default function InventoryPage() {
                 {status === 'all' ? 'All Items' : status === 'low' ? 'Low Stock' : 'Out of Stock'}
               </button>
             ))}
+            <button
+              onClick={() => setShowInactive(v => !v)}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                showInactive ? 'bg-accent text-white' : 'bg-muted text-foreground hover:bg-muted/80'
+              }`}
+            >
+              {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+            </button>
           </div>
         </div>
 
@@ -252,6 +271,7 @@ export default function InventoryPage() {
                     <button onClick={() => openEdit(item)} className="flex-1 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium flex items-center justify-center gap-1"><Edit2 className="w-3.5 h-3.5" /> Edit</button>
                     <button onClick={() => openAdj(item)} className="flex-1 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium">Adjust</button>
                     <button onClick={() => openRestock(item)} className="flex-1 py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-medium">Stock In</button>
+                    <button onClick={() => handleToggleActive(item)} className={`flex-1 py-1.5 rounded-lg text-xs font-medium ${item.is_active ? 'bg-muted text-destructive' : 'bg-accent text-white'}`}>{item.is_active ? 'Deactivate' : 'Activate'}</button>
                   </div>
                 </div>
               )
@@ -319,6 +339,12 @@ export default function InventoryPage() {
                           className="text-accent hover:text-accent/80 transition-colors text-xs font-medium px-2 py-1 rounded bg-accent/10"
                         >
                           Stock In
+                        </button>
+                        <button
+                          onClick={() => handleToggleActive(item)}
+                          className={`text-xs font-medium px-2 py-1 rounded ${item.is_active ? 'bg-muted text-destructive hover:bg-muted/80' : 'bg-accent text-white hover:opacity-90'}`}
+                        >
+                          {item.is_active ? 'Deactivate' : 'Activate'}
                         </button>
                       </div>
                     </td>

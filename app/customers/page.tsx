@@ -26,6 +26,8 @@ export default function CustomersPage() {
   const [adjustDelta, setAdjustDelta] = useState('')
   const [adjustReason, setAdjustReason] = useState('')
   const [adjustSaving, setAdjustSaving] = useState(false)
+  const [adjustError, setAdjustError] = useState('')
+  const [newCustError, setNewCustError] = useState('')
 
   useEffect(() => {
     ;(async () => {
@@ -148,14 +150,18 @@ export default function CustomersPage() {
               <button onClick={async () => {
                 if (!newCustName.trim() || newCustSaving) return
                 setNewCustSaving(true)
+                setNewCustError('')
                 try {
                   await createCustomer({ name: newCustName, mobile_number: newCustMobile || undefined, email: newCustEmail || undefined })
                   setShowNewCustomer(false)
                   const data = await getCustomers()
                   setCustomers(data)
-                } catch { /* handle silently */ } finally { setNewCustSaving(false) }
+                } catch (e: any) {
+                  setNewCustError(e.message || 'Failed to create customer')
+                } finally { setNewCustSaving(false) }
               }} disabled={newCustSaving} className="px-4 py-2 rounded-lg bg-accent text-white disabled:opacity-50">{newCustSaving ? 'Creating...' : 'Create'}</button>
             </div>
+            {newCustError && <p className="text-sm text-destructive mt-3">{newCustError}</p>}
           </div>
         </div>
       )}
@@ -194,15 +200,22 @@ export default function CustomersPage() {
               <button onClick={() => setAdjustCustomer(null)} className="px-4 py-2 rounded-lg bg-muted">Cancel</button>
               <button
                 onClick={async () => {
-                  const delta = parseInt(adjustDelta)
-                  if (!delta || adjustSaving) return
+                  const delta = Number(adjustDelta)
+                  if (adjustSaving) return
+                  if (!adjustDelta.trim() || !Number.isInteger(delta) || delta === 0) {
+                    setAdjustError('Enter a non-zero whole number, e.g. 10 or -5')
+                    return
+                  }
                   setAdjustSaving(true)
+                  setAdjustError('')
                   try {
                     await adjustCustomerPoints(adjustCustomer.id, delta, adjustReason || undefined)
                     setAdjustCustomer(null)
                     const data = await getCustomers()
                     setCustomers(data)
-                  } catch { /* handle silently */ } finally { setAdjustSaving(false) }
+                  } catch (e: any) {
+                    setAdjustError(e.message || 'Failed to adjust points')
+                  } finally { setAdjustSaving(false) }
                 }}
                 disabled={adjustSaving}
                 className="px-4 py-2 rounded-lg bg-accent text-white disabled:opacity-50"
@@ -210,6 +223,7 @@ export default function CustomersPage() {
                 {adjustSaving ? 'Saving...' : 'Save'}
               </button>
             </div>
+            {adjustError && <p className="text-sm text-destructive mt-3">{adjustError}</p>}
           </div>
         </div>
       )}

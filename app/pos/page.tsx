@@ -12,7 +12,7 @@ import { getBusinessSettings } from '@/lib/actions/settings'
 import { printReceipt, printKitchenTicket, getAutoPrint, type ReceiptData } from '@/lib/utils/printer'
 import { openCashDrawer } from '@/lib/utils/cash-drawer'
 import { offlineStore } from '@/lib/offline/store'
-import { syncNow, hasPending, pendingCount } from '@/lib/offline/sync'
+import { syncNow, hasPending, pendingCount, MAX_AUTO_ATTEMPTS } from '@/lib/offline/sync'
 import { PAYMENT_METHODS, PAYMENT_LABELS, isCash, paymentLabel, type PaymentMethod } from '@/lib/utils/payment-methods'
 
 type MenuItem = { id: string; category_id: string; name: string; description: string; base_price: number; loyalty_points_earned: number; image_url?: string; send_to_kds?: boolean }
@@ -105,7 +105,8 @@ export default function POSPage() {
   }, [])
 
   const retrySync = async () => {
-    const { failed } = await syncNow()
+    // Force: retry even sales that exhausted their auto-sync attempts.
+    const { failed } = await syncNow(true)
     setSyncIssues(pendingCount())
     if (failed > 0) {
       const err = offlineStore.getLastError()
@@ -117,9 +118,18 @@ export default function POSPage() {
     }
   }
 
-  const discardQueued = (idempotencyKey: string) => {
-    offlineStore.setQueue(offlineStore.getQueue().filter(q => q.idempotencyKey !== idempotencyKey))
-    setSyncIssues(pendingCount())
+  // Discarding removes a sale that was already paid for — require a confirm.
+  const confirmDiscard = (idempotencyKey: string, ref: string) => {
+    showConfirmation({
+      title: 'Discard Offline Sale',
+      description: `Discard ${ref}? This sale was paid in cash/card offline and will never be recorded if discarded.`,
+      confirmText: 'Discard Sale', cancelText: 'Keep', isDestructive: true,
+      onConfirm: () => {
+        offlineStore.setQueue(offlineStore.getQueue().filter(q => q.idempotencyKey !== idempotencyKey))
+        setSyncIssues(pendingCount())
+        hideConfirmation()
+      },
+    })
   }
 
   const categories = menuData.categories
@@ -221,7 +231,7 @@ export default function POSPage() {
     items: (rc?.items ?? []).map((i: any) => ({
       name: `${i.name}${i.variant_name ? ` (${i.variant_name})` : ''}${i.addons.length > 0 ? ' + ' + i.addons.map((a: any) => a.name).join(', + ') : ''}`,
       qty: i.quantity,
-      price: Math.round((i.unit_price * i.quantity + i.addons.reduce((s: number, a: any) => s + a.unit_price * a.quantity, 0)) * 100) / 100,
+      price: Math.round((i.unit_price * i.quantity + i.addons.reduce((s: number, a: any) => s + a.unit_price * a.quantity, 0) * i.quantity) * 100) / 100,
     })),
     subtotal: rc?.subtotal ?? 0,
     discount: rc?.discount ?? 0,
@@ -290,6 +300,8 @@ export default function POSPage() {
           discount_type: discountType,
         }
         // Server-matching totals (subtotal incl. addons, tax, discount, grand)
+        // are informational for the local receipt only; the server recomputes
+        // everything at sync time, so they are not sent in the queue body.
         const sub = getSub()
         const tax = getTax()
         const disc = getDiscount()
@@ -305,10 +317,6 @@ export default function POSPage() {
               ...payload,
               offline_sync: true,
               sold_at: new Date().toISOString(),
-              sold_subtotal: sub,
-              sold_tax_total: tax,
-              sold_grand_total: grand,
-              sold_discount_total: disc,
             },
             createdAt: new Date().toISOString(),
             ref,
@@ -497,7 +505,7 @@ export default function POSPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-semibold">₱{(item.unit_price * item.quantity + item.addons.reduce((s, a) => s + a.unit_price * a.quantity, 0)).toFixed(2)}</p>
+                    <p className="text-sm font-semibold">₱{(item.unit_price * item.quantity + item.addons.reduce((s, a) => s + a.unit_price * a.quantity, 0) * item.quantity).toFixed(2)}</p>
                     <button onClick={() => removeItem(getItemKey(item))} className="mt-1 text-destructive hover:text-destructive/80"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </div>
@@ -664,7 +672,7 @@ export default function POSPage() {
               </div>
             ))}
 
-            <button onClick={handleAddToCart} className="w-full bg-accent text-white py-2 rounded-lg font-medium">Add to Cart — ₱{getItemPrice(selectedItem, selectedVariant).toFixed(2)}</button>
+            <button onClick={handleAddToCart} className="w-full bg-accent text-white py-2 rounded-lg font-medium">Add to Cart — ₱{(getItemPrice(selectedItem, selectedVariant) + selectedAddons.reduce((s, a) => s + a.unit_price, 0)).toFixed(2)}</button>
           </div>
         </div>
       )}
@@ -677,7 +685,8 @@ export default function POSPage() {
           <div id="receipt" className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl print:shadow-none print:max-w-full print:w-full">
             {/* Header */}
             <div className="text-center mb-4 pb-4 border-b border-dashed border-gray-300">
-              <h2 className="text-xl font-bold">Bean Brewyage</h2>
+              <h2 className="text-xl font-bold">{businessName}</h2>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mt-1">This is not an official receipt</p>
               <p className="text-xs text-gray-500 mt-1">{new Date(receiptData.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</p>
               <p className="text-lg font-semibold mt-2 text-gray-800">{receiptData.orderNumber}</p>
               {receiptData.customerName && <p className="text-sm text-gray-500">Customer: {receiptData.customerName}</p>}
@@ -692,11 +701,11 @@ export default function POSPage() {
                     {item.variant_name && <span className="text-gray-500"> ({item.variant_name})</span>}
                     {item.addons.length > 0 && (
                       <div className="text-xs text-gray-400 ml-3">
-                        {item.addons.map(a => `+ ${a.name} (₱${(a.unit_price * a.quantity).toFixed(2)})`).join(', ')}
+                        {item.addons.map(a => `+ ${a.name} (₱${(a.unit_price * a.quantity * item.quantity).toFixed(2)})`).join(', ')}
                       </div>
                     )}
                   </div>
-                  <span className="font-medium">₱{(item.unit_price * item.quantity + item.addons.reduce((s, a) => s + a.unit_price * a.quantity, 0)).toFixed(2)}</span>
+                  <span className="font-medium">₱{(item.unit_price * item.quantity + item.addons.reduce((s, a) => s + a.unit_price * a.quantity, 0) * item.quantity).toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -754,15 +763,21 @@ export default function POSPage() {
             <p className="text-sm text-muted-foreground mb-4">{syncIssues} sale(s) waiting to sync.</p>
             <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
               {offlineStore.getQueue().length === 0 && <p className="text-sm text-muted-foreground">Nothing pending.</p>}
-              {offlineStore.getQueue().map(item => (
+              {offlineStore.getQueue().map(item => {
+                const attempts = item.attempts ?? 0
+                return (
                 <div key={item.idempotencyKey} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                   <div>
                     <div className="text-sm font-semibold">{item.ref}</div>
-                    <div className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleTimeString('en-PH')}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(item.createdAt).toLocaleTimeString('en-PH')}
+                      {attempts > 0 && <span className={attempts >= MAX_AUTO_ATTEMPTS ? ' text-destructive font-medium' : ' text-yellow-600'}> · {attempts} failed attempt{attempts > 1 ? 's' : ''}{attempts >= MAX_AUTO_ATTEMPTS ? ' — use Sync Now to force' : ''}</span>}
+                    </div>
                   </div>
-                  <button onClick={() => discardQueued(item.idempotencyKey)} className="rounded-full border border-red-400/40 px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-500/20">Discard</button>
+                  <button onClick={() => confirmDiscard(item.idempotencyKey, item.ref)} className="rounded-full border border-red-400/40 px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-500/20">Discard</button>
                 </div>
-              ))}
+                )
+              })}
             </div>
             {offlineStore.getLastError() && (
               <p className="text-xs text-destructive mb-3"><strong>Last error:</strong> {offlineStore.getLastError()!.message}</p>

@@ -2,9 +2,10 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth/session'
-import { getBusinessDate } from '@/lib/business-date'
+import { getBusinessDateServer } from '@/lib/business-date-server'
 
 export async function getExpenseCategories() {
+  await requireRole(['admin', 'cashier'])()
   const supabase = await createClient()
   const { data } = await supabase.from('expense_categories').select('*').eq('is_active', true).order('sort_order')
   return data ?? []
@@ -16,7 +17,7 @@ export async function createExpense(data: {
 }) {
   await requireRole(['admin'])()
   const supabase = await createClient()
-  const bizDate = getBusinessDate()
+  const bizDate = await getBusinessDateServer()
   const { data: result, error } = await supabase.from('expenses').insert({
     expense_category_id: data.expense_category_id,
     description: data.description,

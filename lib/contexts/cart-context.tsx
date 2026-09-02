@@ -18,7 +18,8 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 
 function itemKey(item: CartItem): string {
   const addons = [...item.addons].map(a => a.addon_id).sort().join('|')
-  return `${item.menu_item_id}-${item.menu_item_variant_id || ''}-${addons}`
+  // notes are part of identity so two lines with different notes don't merge
+  return `${item.menu_item_id}-${item.menu_item_variant_id || ''}-${addons}-${item.notes ?? ''}`
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {

@@ -21,13 +21,15 @@ export async function GET() {
 
     const { data } = await supabase
       .from('sessions')
-      .select('user:users(id, name, username, role)')
+      .select('user:users(id, name, username, role, is_active)')
       .eq('token_hash', tokenHash)
       .gte('expires_at', new Date().toISOString())
       .is('revoked_at', null)
       .single()
 
-    return NextResponse.json({ user: data?.user || null })
+    const user = data?.user as { is_active?: boolean } | undefined
+    const active = !!user && user.is_active !== false
+    return NextResponse.json({ user: active ? user : null })
   } catch {
     return NextResponse.json({ user: null })
   }

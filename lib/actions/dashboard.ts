@@ -2,11 +2,19 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth/session'
-import { getBusinessDate } from '@/lib/business-date'
+import { getBusinessDateServer } from '@/lib/business-date-server'
 
 export async function getDashboardSummary(dateFrom?: string, dateTo?: string) {
   await requireRole(['admin'])()
   const supabase = await createClient()
+
+  // Default to the current business date — the dashboard presents these
+  // numbers as "Today's Sales", so an unscoped (all-time) query is wrong.
+  if (!dateFrom && !dateTo) {
+    const today = await getBusinessDateServer()
+    dateFrom = today
+    dateTo = today
+  }
 
   let orderQuery = supabase
     .from('orders')
@@ -66,8 +74,8 @@ export async function getSalesTrend(days: number = 7) {
 
   const fromDate = new Date()
   fromDate.setDate(fromDate.getDate() - days + 1)
-  const from = getBusinessDate(fromDate)
-  const to = getBusinessDate()
+  const from = await getBusinessDateServer(fromDate)
+  const to = await getBusinessDateServer()
 
   const { data: orders } = await supabase
     .from('orders')
@@ -81,7 +89,7 @@ export async function getSalesTrend(days: number = 7) {
   for (let i = 0; i < days; i++) {
     const d = new Date(fromDate)
     d.setDate(d.getDate() + i)
-    daily[getBusinessDate(d)] = 0
+    daily[await getBusinessDateServer(d)] = 0
   }
 
   for (const o of orders ?? []) {

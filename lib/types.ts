@@ -256,6 +256,8 @@ export interface Staff {
 export interface AuthContextType {
   currentStaff: Staff | null
   isAuthenticated: boolean
+  /** True until the initial session check completes; don't redirect before it does. */
+  authLoading: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }

@@ -36,6 +36,7 @@ export interface QueuedSale {
   body: Record<string, unknown>
   createdAt: string
   ref: string
+  attempts?: number
 }
 
 export interface SyncError {

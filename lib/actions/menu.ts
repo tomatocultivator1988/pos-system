@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth/session'
 
 export async function getCategories() {
+  await requireRole(['admin'])()
   const supabase = await createClient()
   const { data } = await supabase
     .from('menu_categories')
@@ -39,6 +40,7 @@ export async function updateCategory(id: string, data: { name?: string; sort_ord
 }
 
 export async function getMenuItems(categoryId?: string) {
+  await requireRole(['admin'])()
   const supabase = await createClient()
   let query = supabase
     .from('menu_items')
@@ -84,6 +86,7 @@ export async function updateMenuItem(id: string, data: Partial<{
 }
 
 export async function getVariants(menuItemId: string) {
+  await requireRole(['admin'])()
   const supabase = await createClient()
   const { data } = await supabase
     .from('menu_item_variants')
@@ -127,6 +130,7 @@ export async function updateVariant(id: string, data: Partial<{
 }
 
 export async function getAddonGroups(menuItemId: string) {
+  await requireRole(['admin'])()
   const supabase = await createClient()
   const { data } = await supabase
     .from('addon_groups')
@@ -171,6 +175,7 @@ export async function getRecipeLines(params: {
   scope: 'item' | 'variant' | 'addon'
   refId?: string
 }) {
+  await requireRole(['admin'])()
   const supabase = await createClient()
   let query = supabase
     .from('recipe_lines')
@@ -194,6 +199,7 @@ export async function getRecipeLines(params: {
 }
 
 export async function getRecipeCounts() {
+  await requireRole(['admin'])()
   const supabase = await createClient()
   const { data } = await supabase
     .from('recipe_lines')
@@ -254,6 +260,7 @@ export async function deleteMenuImage(publicUrl: string) {
 }
 
 export async function getInactiveMenuItems() {
+  await requireRole(['admin'])()
   const supabase = await createClient()
   const { data } = await supabase
     .from('menu_items')

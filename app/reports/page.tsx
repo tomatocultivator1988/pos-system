@@ -89,6 +89,29 @@ export default function ReportsPage() {
 
   const paymentMethodData = sales ? Object.entries(sales.summary.by_method || {}).map(([name, value]: any) => ({ name: paymentLabel(name), value })) : []
 
+  // Aggregate valid orders per business date and zero-fill the selected window,
+  // so the chart is an actual daily trend rather than one point per order.
+  const dailySalesData = (() => {
+    if (!sales) return []
+    const totals: Record<string, number> = {}
+    for (const o of sales.orders || []) {
+      if (o.status === 'voided' || o.payment_status === 'voided' || o.payment_status === 'refunded') continue
+      if (!o.business_date) continue
+      totals[o.business_date] = Math.round(((totals[o.business_date] || 0) + Number(o.grand_total)) * 100) / 100
+    }
+    const out: { name: string; sales: number }[] = []
+    const [fy, fm, fd] = String(dateFrom).split('-').map(Number)
+    const [ty, tm, td] = String(dateTo).split('-').map(Number)
+    if (!fy || !ty) return []
+    const end = Date.UTC(ty, tm - 1, td)
+    for (let t = Date.UTC(fy, fm - 1, fd); t <= end && out.length < 366; t += 86_400_000) {
+      const d = new Date(t)
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+      out.push({ name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }), sales: totals[key] || 0 })
+    }
+    return out
+  })()
+
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl">
@@ -140,11 +163,11 @@ export default function ReportsPage() {
                   <div className="bg-card border border-border rounded-2xl p-4 lg:p-6">
                     <h3 className="text-lg font-semibold mb-4">Sales Trend</h3>
                     <ResponsiveContainer width="100%" height={250}>
-                      <LineChart data={(sales.orders || []).filter((o: any) => o.status !== 'voided' && o.payment_status !== 'voided' && o.payment_status !== 'refunded').slice().reverse().map((o: any) => ({ name: new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), sales: Number(o.grand_total) }))}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" /><XAxis dataKey="name" stroke="#999" fontSize={12} /><YAxis stroke="#999" fontSize={12} />
-                        <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px' }} formatter={(v: any) => formatPHP(Number(v))} />
-                        <Line type="monotone" dataKey="sales" stroke="hsl(140 71% 45%)" strokeWidth={2} dot={false} />
-                      </LineChart>
+                    <LineChart data={dailySalesData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" /><XAxis dataKey="name" stroke="#999" fontSize={12} /><YAxis stroke="#999" fontSize={12} />
+                      <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px' }} formatter={(v: any) => formatPHP(Number(v))} />
+                      <Line type="monotone" dataKey="sales" stroke="hsl(140 71% 45%)" strokeWidth={2} dot={false} />
+                    </LineChart>
                     </ResponsiveContainer>
                   </div>
                   <div className="bg-card border border-border rounded-2xl p-4 lg:p-6">
@@ -243,6 +266,14 @@ export default function ReportsPage() {
                   <table className="w-full text-sm"><thead><tr className="border-b border-border bg-muted"><th className="px-4 py-3 text-left">Order #</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-right">Amount</th></tr></thead>
                     <tbody>{voids.voidList.length === 0 ? <tr><td colSpan={3} className="px-4 py-6 text-center text-muted-foreground">No voided orders</td></tr> : voids.voidList.map((o: any) => (
                       <tr key={o.id} className="border-b border-border hover:bg-muted/50"><td className="px-4 py-3 font-medium">{o.order_number}</td><td className="px-4 py-3 text-muted-foreground">{new Date(o.created_at).toLocaleDateString()}</td><td className="px-4 py-3 text-right text-destructive">{formatPHP(Number(o.grand_total))}</td></tr>
+                    ))}</tbody></table>
+                </div>
+
+                <div className="flex justify-between items-center mb-3"><h3 className="text-lg font-semibold">Refunded Orders</h3></div>
+                <div className="bg-card border border-border rounded-2xl overflow-hidden">
+                  <table className="w-full text-sm"><thead><tr className="border-b border-border bg-muted"><th className="px-4 py-3 text-left">Order #</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-right">Amount</th></tr></thead>
+                    <tbody>{voids.refundList.length === 0 ? <tr><td colSpan={3} className="px-4 py-6 text-center text-muted-foreground">No refunded orders</td></tr> : voids.refundList.map((o: any) => (
+                      <tr key={o.id} className="border-b border-border hover:bg-muted/50"><td className="px-4 py-3 font-medium">{o.order_number}</td><td className="px-4 py-3 text-muted-foreground">{new Date(o.created_at).toLocaleDateString()}</td><td className="px-4 py-3 text-right text-yellow-700">{formatPHP(Number(o.grand_total))}</td></tr>
                     ))}</tbody></table>
                 </div>
               </>

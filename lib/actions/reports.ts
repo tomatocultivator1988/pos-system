@@ -425,7 +425,7 @@ export async function getSalesByPaymentTypeReport(dateFrom?: string, dateTo?: st
   await requireRole(['admin'])()
   const supabase = await createClient()
   const valid = await fetchAll((from, to) => {
-    let q = supabase.from('orders').select('id, payment_method, grand_total, business_date, status, payment_status').neq('status', 'voided').neq('payment_status', 'voided').neq('payment_status', 'refunded')
+    let q = supabase.from('orders').select('id, payment_method, grand_total, tax_total, business_date, status, payment_status').neq('status', 'voided').neq('payment_status', 'voided').neq('payment_status', 'refunded')
     if (dateFrom) q = q.gte('business_date', dateFrom)
     if (dateTo) q = q.lte('business_date', dateTo)
     return q.range(from, to)
@@ -459,23 +459,27 @@ export async function getSalesByPaymentTypeReport(dateFrom?: string, dateTo?: st
       qtyByOrder[it.order_id] = (qtyByOrder[it.order_id] || 0) + Number(it.quantity)
     }
   }
-  type Agg = { method: string; orders: number; qty: number; sales: number; net: number; cost: number }
+  type Agg = { method: string; orders: number; qty: number; sales: number; net: number; tax: number; cost: number }
   const agg: Record<string, Agg> = {}
   for (const o of valid) {
     const m = o.payment_method || 'unknown'
-    if (!agg[m]) agg[m] = { method: m, orders: 0, qty: 0, sales: 0, net: 0, cost: 0 }
+    if (!agg[m]) agg[m] = { method: m, orders: 0, qty: 0, sales: 0, net: 0, tax: 0, cost: 0 }
     agg[m].orders += 1
     const gross = salesByOrder[o.id] ?? Number(o.grand_total)
     const net = Number(o.grand_total)
     agg[m].sales += gross
     agg[m].net += net
+    agg[m].tax += Number(o.tax_total || 0)
     agg[m].cost += costByOrder[o.id] || 0
     agg[m].qty += qtyByOrder[o.id] || 0
   }
   const rows = Object.values(agg)
     .map(v => {
-      const profit = v.net - v.cost
-      return { id: v.method, method: v.method, orders: v.orders, qty: v.qty, sales: round(v.sales), net: round(v.net), cost: round(v.cost), profit: round(profit), margin: v.net > 0 ? round((profit / v.net) * 100) : 0, avg: v.orders ? round(v.net / v.orders) : 0 }
+      // net is the collected total and includes tax; subtract it from profit so
+      // profit stays on the same pre-tax basis as the ingredient cost.
+      const pretaxNet = v.net - v.tax
+      const profit = pretaxNet - v.cost
+      return { id: v.method, method: v.method, orders: v.orders, qty: v.qty, sales: round(v.sales), net: round(v.net), cost: round(v.cost), profit: round(profit), margin: pretaxNet > 0 ? round((profit / pretaxNet) * 100) : 0, avg: v.orders ? round(v.net / v.orders) : 0 }
     })
     .sort((a, b) => b.sales - a.sales)
   const top = rows[0]

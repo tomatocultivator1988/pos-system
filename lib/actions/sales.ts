@@ -1,11 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { getSession } from '@/lib/auth/session'
+import { requireRole } from '@/lib/auth/session'
 
 export async function getSales(dateFrom?: string, dateTo?: string) {
-  const user = await getSession()
-  if (!user) throw new Error('Unauthorized')
+  await requireRole(['admin'])()
 
   const supabase = await createClient()
   let query = supabase
@@ -27,8 +26,7 @@ export async function getSales(dateFrom?: string, dateTo?: string) {
 }
 
 export async function getSale(id: string) {
-  const user = await getSession()
-  if (!user) throw new Error('Unauthorized')
+  await requireRole(['admin'])()
 
   const supabase = await createClient()
   const { data } = await supabase
