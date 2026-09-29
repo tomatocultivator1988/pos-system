@@ -11,7 +11,20 @@ import {
   openCashShift,
   recordCashMovement,
 } from '@/lib/actions/cash-shifts'
-import { Printer, Eye, X, CheckCircle2, AlertTriangle, ArrowDownRight, ArrowUpRight } from 'lucide-react'
+import { getStaffList, updateStaffName, type StaffUser } from '@/lib/actions/users'
+import {
+  Printer,
+  Eye,
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  Users,
+  Lock,
+  Pencil,
+  Save,
+} from 'lucide-react'
 
 export default function CashShiftsPage() {
   const { currentStaff } = useAuth()
@@ -35,6 +48,15 @@ export default function CashShiftsPage() {
   // Shift detail modal & print
   const [selectedShift, setSelectedShift] = useState<any | null>(null)
 
+  // Staff accounts sub-tab states
+  const [subTab, setSubTab] = useState<'shifts' | 'staff'>('shifts')
+  const [staffList, setStaffList] = useState<StaffUser[]>([])
+  const [staffLoading, setStaffLoading] = useState(false)
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPassword, setEditPassword] = useState('')
+  const [staffBusy, setStaffBusy] = useState(false)
+
   const load = async () => {
     try {
       setLoading(true)
@@ -45,6 +67,52 @@ export default function CashShiftsPage() {
       setMessage(error.message || 'Could not load cash shifts')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadStaff = async () => {
+    try {
+      setStaffLoading(true)
+      const list = await getStaffList()
+      setStaffList(list)
+    } catch (e: any) {
+      setMessage(e.message || 'Failed to load staff list')
+    } finally {
+      setStaffLoading(false)
+    }
+  }
+
+  const startEditStaff = (staff: StaffUser) => {
+    setEditingStaffId(staff.id)
+    setEditName(staff.name)
+    setEditPassword('')
+    setMessage('')
+    setSuccessMsg('')
+  }
+
+  const cancelEditStaff = () => {
+    setEditingStaffId(null)
+    setEditName('')
+    setEditPassword('')
+  }
+
+  const saveStaffEdit = async (staffId: string) => {
+    if (!editName.trim()) {
+      setMessage('Staff name cannot be empty')
+      return
+    }
+    setStaffBusy(true)
+    setMessage('')
+    setSuccessMsg('')
+    try {
+      await updateStaffName(staffId, editName, editPassword || undefined)
+      setSuccessMsg('Staff account updated successfully!')
+      setEditingStaffId(null)
+      await loadStaff()
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to update staff account')
+    } finally {
+      setStaffBusy(false)
     }
   }
 
@@ -154,10 +222,45 @@ export default function CashShiftsPage() {
             <h1 className="text-2xl lg:text-3xl font-semibold mb-1">Cash Shifts</h1>
             <p className="text-sm text-muted-foreground">Manage starting float, drawer cash movements, and shift closing.</p>
           </div>
-          <button onClick={load} className="px-3.5 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors">
+          <button
+            onClick={() => {
+              if (subTab === 'shifts') load()
+              else loadStaff()
+            }}
+            className="px-3.5 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
+          >
             Refresh
           </button>
         </div>
+
+        {/* Sub-tabs for Admin */}
+        {currentStaff?.role === 'admin' && (
+          <div className="flex gap-2 border-b border-border pb-3 mb-6">
+            <button
+              onClick={() => setSubTab('shifts')}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                subTab === 'shifts'
+                  ? 'bg-accent text-white shadow-xs'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Drawer & Shifts
+            </button>
+            <button
+              onClick={() => {
+                setSubTab('staff')
+                loadStaff()
+              }}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                subTab === 'staff'
+                  ? 'bg-accent text-white shadow-xs'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Staff Accounts
+            </button>
+          </div>
+        )}
 
         {message && (
           <div className="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-center gap-2">
@@ -171,6 +274,9 @@ export default function CashShiftsPage() {
             <span>{successMsg}</span>
           </div>
         )}
+
+        {subTab === 'shifts' ? (
+          <>
 
         {loading ? (
           <div className="animate-pulse bg-muted h-64 rounded-2xl" />
@@ -546,6 +652,130 @@ export default function CashShiftsPage() {
             </table>
           </div>
         </div>
+        </>
+      ) : (
+        <div className="space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-xs">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <Users className="w-5 h-5 text-accent" />
+                  Staff Account Profiles
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  These accounts are predefined for the register terminal, kitchen display, and store administrator. You can update staff display names or reset their login PINs below.
+                </p>
+              </div>
+            </div>
+
+            {staffLoading ? (
+              <div className="animate-pulse bg-muted h-48 rounded-xl" />
+            ) : (
+              <div className="space-y-4">
+                {staffList.map(staff => {
+                  const isEditing = editingStaffId === staff.id
+                  const roleBadge =
+                    staff.role === 'admin'
+                      ? { label: 'Administrator', bg: 'bg-purple-100 text-purple-800 border-purple-200', desc: 'Full access to POS, settings, inventory, shifts, and reports' }
+                      : staff.role === 'cashier'
+                      ? { label: 'Cashier', bg: 'bg-green-100 text-green-800 border-green-200', desc: 'Counter POS terminal, accepts payments, opens/closes cash drawer' }
+                      : { label: 'Kitchen Display (KDS)', bg: 'bg-amber-100 text-amber-800 border-amber-200', desc: 'Kitchen tablet screen for live food and drink preparation' }
+
+                  return (
+                    <div
+                      key={staff.id}
+                      className="p-5 border border-border rounded-xl bg-background hover:border-border/80 transition-colors"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${roleBadge.bg}`}>
+                              {roleBadge.label}
+                            </span>
+                            <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-muted-foreground" />
+                              Username: <strong>{staff.username}</strong>
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1.5">{roleBadge.desc}</p>
+                        </div>
+
+                        {!isEditing && (
+                          <button
+                            onClick={() => startEditStaff(staff)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            Edit Name & PIN
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-border/60">
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <div className="grid sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground block mb-1">
+                                  Display Name *
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editName}
+                                  onChange={e => setEditName(e.target.value)}
+                                  placeholder="Staff member name"
+                                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm font-medium focus:outline-accent"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground block mb-1">
+                                  New Password / PIN <span className="font-normal">(optional)</span>
+                                </label>
+                                <input
+                                  type="password"
+                                  value={editPassword}
+                                  onChange={e => setEditPassword(e.target.value)}
+                                  placeholder="Leave blank to keep unchanged"
+                                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-accent"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={cancelEditStaff}
+                                disabled={staffBusy}
+                                className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={staffBusy || !editName.trim()}
+                                onClick={() => saveStaffEdit(staff.id)}
+                                className="px-3.5 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                {staffBusy ? 'Saving...' : 'Save Changes'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground text-xs">Current Display Name:</span>
+                            <strong className="text-sm font-semibold">{staff.name}</strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
         {/* Shift Details Modal */}
         {selectedShift && (
