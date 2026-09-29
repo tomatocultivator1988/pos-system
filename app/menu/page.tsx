@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import AppLayout from '@/components/app-layout'
-import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, getAddonGroups, createAddonGroup, createAddon, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage } from '@/lib/actions/menu'
+import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, getAddonGroups, createAddonGroup, createAddon, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
 import { getIngredients } from '@/lib/actions/inventory'
-import { Plus, Pencil, Trash2, ChefHat } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChefHat, Tag, X } from 'lucide-react'
 import { useModal } from '@/lib/contexts/modal-context'
 
 interface Category { id: string; name: string; sort_order: number; is_active: boolean }
@@ -37,6 +37,7 @@ export default function MenuPage() {
   const [vMode, setVMode] = useState<'override' | 'adjustment'>('override')
   const [groups, setGroups] = useState<any[]>([])
   const [gName, setGName] = useState('')
+  const [addonNames, setAddonNames] = useState<Record<string, string>>({})
   const [scope, setScope] = useState<'item' | 'variant' | 'addon'>('item')
   const [scopeRef, setScopeRef] = useState<string>('')
   const [recipeRows, setRecipeRows] = useState<{ ingredientId: string; quantity: string }[]>([])
@@ -48,6 +49,11 @@ export default function MenuPage() {
   const [menuLoading, setMenuLoading] = useState(true)
   const [menuError, setMenuError] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(false)
+
+  const [catModalOpen, setCatModalOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [editingCatId, setEditingCatId] = useState<string | null>(null)
+  const [editingCatName, setEditingCatName] = useState('')
 
   const load = async () => {
     try {
@@ -137,6 +143,49 @@ export default function MenuPage() {
     })
   }
 
+  const addCategory = async () => {
+    if (!newCatName.trim()) return
+    try {
+      await createCategory({ name: newCatName.trim(), sort_order: categories.length })
+      setNewCatName('')
+      await load()
+    } catch (err: any) {
+      showConfirmation({ title: 'Error', description: err.message?.includes('duplicate') ? `"${newCatName}" already exists.` : err.message, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+    }
+  }
+
+  const renameCategory = async (id: string) => {
+    if (!editingCatName.trim()) return
+    try {
+      await updateCategory(id, { name: editingCatName.trim() })
+      setEditingCatId(null); setEditingCatName('')
+      await load()
+    } catch (err: any) {
+      showConfirmation({ title: 'Error', description: err.message?.includes('duplicate') ? `"${editingCatName}" already exists.` : err.message, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+    }
+  }
+
+  const removeCategory = (cat: Category) => {
+    const itemCount = items.filter(i => i.category_id === cat.id && i.is_active).length
+    let deactivating = false
+    showConfirmation({
+      title: 'Delete Category',
+      description: itemCount > 0
+        ? `Deactivate "${cat.name}"? ${itemCount} item(s) in this category will also be hidden.`
+        : `Deactivate "${cat.name}"?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: async () => {
+        if (deactivating) return
+        deactivating = true
+        await deleteCategory(cat.id)
+        if (activeCategory === cat.id) setActiveCategory(undefined)
+        hideConfirmation(); await load()
+      },
+    })
+  }
+
   const openRecipe = async (it: MenuItem) => {
     setRecipeItem(it); setRecipeOpen(true)
     const [vs, gs, ings] = await Promise.all([getVariants(it.id), getAddonGroups(it.id), getIngredients()])
@@ -159,6 +208,39 @@ export default function MenuPage() {
       setVariants(prev => [...prev, v as any]); setVName(''); setVPrice('')
     } catch (err: any) {
       showConfirmation({ title: 'Error', description: `"${vName}" already exists for this item.`, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+    }
+  }
+
+  const addAddonToGroup = async (group: any) => {
+    const name = (addonNames[group.id] || '').trim()
+    if (!name) return
+    try {
+      const addon = await createAddon({ addon_group_id: group.id, name })
+      setGroups(prev => prev.map(current =>
+        current.id === group.id
+          ? { ...current, addons: [...(current.addons || []), addon] }
+          : current
+      ))
+      setAddonNames(prev => ({ ...prev, [group.id]: '' }))
+    } catch (err: any) {
+      showConfirmation({ title: 'Error', description: `"${name}" already exists in this group.`, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+    }
+  }
+
+  const selectRecipeScope = async (nextScope: 'item' | 'variant' | 'addon', refId = '') => {
+    if (!recipeItem || scopeLoading) return
+    setScopeLoading(true)
+    setScope(nextScope)
+    setScopeRef(refId)
+    try {
+      const lines = await getRecipeLines({
+        menuItemId: recipeItem.id,
+        scope: nextScope,
+        refId: refId || undefined,
+      })
+      setRecipeRows(lines.map((r: any) => ({ ingredientId: r.ingredient_id, quantity: String(r.quantity_required) })))
+    } finally {
+      setScopeLoading(false)
     }
   }
 
@@ -196,6 +278,9 @@ export default function MenuPage() {
             <p className="text-muted-foreground">Manage menu items, variants, add-ons and recipes</p>
           </div>
           <button onClick={() => setShowInactive(v => !v)} className={`px-4 py-2 rounded-lg text-sm font-medium ${showInactive ? 'bg-accent text-white' : 'bg-muted text-foreground hover:bg-muted/80'}`}>Show Inactive</button>
+          <button onClick={() => setCatModalOpen(true)} className="bg-muted text-foreground px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-muted/80 text-sm font-medium">
+            <Tag className="w-4 h-4" /> Categories
+          </button>
           <button onClick={openNew} className="bg-accent text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:opacity-90">
             <Plus className="w-4 h-4" /> New Item
           </button>
@@ -315,23 +400,59 @@ export default function MenuPage() {
                   <input placeholder="Group name" value={gName} onChange={e => setGName(e.target.value)} className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm" />
                   <button onClick={async () => { if (!gName.trim() || !recipeItem) return; try { const g = await createAddonGroup({ menu_item_id: recipeItem.id, name: gName }); setGroups(prev => [...prev, { ...(g as any), addons: [] }]); setGName('') } catch (err: any) { showConfirmation({ title: 'Error', description: `Group "${gName}" already exists.`, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false }) } }} className="bg-accent text-white px-3 py-2 rounded-lg text-sm">Add Group</button>
                 </div>
-                {groups.map((g, gi) => (
+                {groups.map(g => (
                   <div key={g.id} className="mb-2 pl-3 border-l-2 border-border">
                     <p className="text-sm font-medium">{g.name}</p>
                     <div className="flex gap-2 mt-1">
-                      <input placeholder="Add-on name" data-g={gi} className="flex-1 px-2 py-1.5 border border-border rounded-lg bg-background text-sm" onKeyDown={async (e) => { if (e.key !== 'Enter') return; const t = e.target as HTMLInputElement; const nm = t.value.trim(); if (!nm) return; try { const a = await createAddon({ addon_group_id: g.id, name: nm }); setGroups(prev => prev.map((p, i) => i === gi ? { ...p, addons: [...(p.addons || []), a] } : p)); t.value = '' } catch (err: any) { showConfirmation({ title: 'Error', description: `"${nm}" already exists in this group.`, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false }) } }} />
+                      <input
+                        placeholder="Add-on name"
+                        value={addonNames[g.id] || ''}
+                        onChange={e => setAddonNames(prev => ({ ...prev, [g.id]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') addAddonToGroup(g) }}
+                        className="flex-1 min-w-0 px-2 py-1.5 border border-border rounded-lg bg-background text-sm"
+                      />
+                      <button onClick={() => addAddonToGroup(g)} disabled={!(addonNames[g.id] || '').trim()} className="shrink-0 bg-accent text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50">Add Add-on</button>
                     </div>
                   </div>
                 ))}
               </section>
 
               <section className="mb-6">
-                <h3 className="font-medium mb-2">Recipe (ingredients consumed)</h3>
-                <div className="flex gap-2 mb-2 flex-wrap">
-                  <button onClick={() => { setScopeLoading(true); setScope('item'); setScopeRef(''); getRecipeLines({ menuItemId: recipeItem.id, scope: 'item' }).then((rl: any) => { setRecipeRows(rl.map((r: any) => ({ ingredientId: r.ingredient_id, quantity: String(r.quantity_required) }))); setScopeLoading(false) }) }} disabled={scopeLoading} className={`px-3 py-1 rounded-full text-xs ${scope === 'item' ? 'bg-accent text-white' : 'bg-muted'} disabled:opacity-50`}>Base Item</button>
-                  {variants.map(v => <button key={v.id} onClick={() => { setScopeLoading(true); setScope('variant'); setScopeRef(v.id); getRecipeLines({ menuItemId: recipeItem.id, scope: 'variant', refId: v.id }).then((rl: any) => { setRecipeRows(rl.map((r: any) => ({ ingredientId: r.ingredient_id, quantity: String(r.quantity_required) }))); setScopeLoading(false) }) }} disabled={scopeLoading} className={`px-3 py-1 rounded-full text-xs ${scope === 'variant' && scopeRef === v.id ? 'bg-accent text-white' : 'bg-muted'} disabled:opacity-50`}>{v.name}</button>)}
-                  {groups.flatMap(g => g.addons || []).map((a: any) => <button key={a.id} onClick={() => { setScopeLoading(true); setScope('addon'); setScopeRef(a.id); getRecipeLines({ menuItemId: recipeItem.id, scope: 'addon', refId: a.id }).then((rl: any) => { setRecipeRows(rl.map((r: any) => ({ ingredientId: r.ingredient_id, quantity: String(r.quantity_required) }))); setScopeLoading(false) }) }} disabled={scopeLoading} className={`px-3 py-1 rounded-full text-xs ${scope === 'addon' && scopeRef === a.id ? 'bg-accent text-white' : 'bg-muted'} disabled:opacity-50`}>{a.name}</button>)}
+                <h3 className="font-medium">Inventory Recipe</h3>
+                <p className="text-xs text-muted-foreground mt-1 mb-3">Choose what you are setting up, then add only the ingredients it uses.</p>
+
+                <div className="space-y-3 mb-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">BASE PRODUCT</p>
+                    <button onClick={() => selectRecipeScope('item')} disabled={scopeLoading} className={`px-3 py-1.5 rounded-full text-xs font-medium ${scope === 'item' ? 'bg-accent text-white' : 'bg-muted hover:bg-muted/80'} disabled:opacity-50`}>Base Item</button>
+                  </div>
+
+                  {variants.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">VARIANT RECIPES</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {variants.map(v => <button key={v.id} onClick={() => selectRecipeScope('variant', v.id)} disabled={scopeLoading} className={`px-3 py-1.5 rounded-full text-xs font-medium ${scope === 'variant' && scopeRef === v.id ? 'bg-accent text-white' : 'bg-muted hover:bg-muted/80'} disabled:opacity-50`}>{v.name}</button>)}
+                      </div>
+                    </div>
+                  )}
+
+                  {groups.some(g => (g.addons || []).length > 0) && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">ADD-ON RECIPES</p>
+                      <div className="space-y-2">
+                        {groups.filter(g => (g.addons || []).length > 0).map(g => (
+                          <div key={g.id}>
+                            <p className="text-xs text-muted-foreground mb-1">{g.name}</p>
+                            <div className="flex gap-2 flex-wrap">
+                              {(g.addons || []).map((a: any) => <button key={a.id} onClick={() => selectRecipeScope('addon', a.id)} disabled={scopeLoading} className={`px-3 py-1.5 rounded-full text-xs font-medium ${scope === 'addon' && scopeRef === a.id ? 'bg-accent text-white' : 'bg-muted hover:bg-muted/80'} disabled:opacity-50`}>{a.name}</button>)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+                <p className="text-sm font-medium mb-2">Editing recipe for: {scope === 'item' ? 'Base Item' : scope === 'variant' ? variants.find(v => v.id === scopeRef)?.name : groups.flatMap(g => g.addons || []).find((a: any) => a.id === scopeRef)?.name}</p>
                 <div className="space-y-1 mb-2">
                   {recipeRows.map((r, i) => (
                     <div key={i} className="flex justify-between text-sm bg-muted rounded px-3 py-1.5">
@@ -355,6 +476,68 @@ export default function MenuPage() {
           </div>
         )}
           </>
+        )}
+
+        {/* Category Management Modal */}
+        {catModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Manage Categories</h2>
+                <button onClick={() => setCatModalOpen(false)} className="p-1 hover:bg-muted rounded-lg"><X className="w-5 h-5" /></button>
+              </div>
+
+              {/* Add new category */}
+              <div className="flex gap-2 mb-4">
+                <input
+                  value={newCatName}
+                  onChange={e => setNewCatName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addCategory()}
+                  placeholder="New category name"
+                  className="flex-1 px-3 py-2 border border-border rounded-lg text-sm"
+                />
+                <button onClick={addCategory} className="bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90">Add</button>
+              </div>
+
+              {/* Category list */}
+              <div className="space-y-1 max-h-[40vh] overflow-y-auto">
+                {categories.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">No categories yet</p>
+                ) : categories.map(cat => {
+                  const count = items.filter(i => i.category_id === cat.id && i.is_active).length
+                  return (
+                    <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted/50 group">
+                      {editingCatId === cat.id ? (
+                        <input
+                          autoFocus
+                          value={editingCatName}
+                          onChange={e => setEditingCatName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') renameCategory(cat.id); if (e.key === 'Escape') { setEditingCatId(null); setEditingCatName('') } }}
+                          onBlur={() => renameCategory(cat.id)}
+                          className="flex-1 px-2 py-1 border border-accent rounded text-sm"
+                        />
+                      ) : (
+                        <span className="flex-1 text-sm font-medium">{cat.name}</span>
+                      )}
+                      <span className="text-xs text-muted-foreground">{count} items</span>
+                      {editingCatId !== cat.id && (
+                        <button onClick={() => { setEditingCatId(cat.id); setEditingCatName(cat.name) }} className="p-1 hover:bg-muted rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => removeCategory(cat)} className="p-1 hover:bg-muted rounded text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="flex justify-end mt-4">
+                <button onClick={() => setCatModalOpen(false)} className="px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/80 text-sm">Done</button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </AppLayout>

@@ -14,6 +14,7 @@ interface Expense {
   id: string; description: string; amount: number; expense_date: string
   business_date: string; payment_method?: string; reference_number?: string
   notes?: string; created_at: string; expense_category?: { name?: string } | null
+  paid_from_drawer?: boolean
 }
 
 export default function ExpensesPage() {
@@ -28,6 +29,7 @@ export default function ExpensesPage() {
   const [description, setDescription] = useState('')
   const [expenseDate, setExpenseDate] = useState(getBusinessDate())
   const [paymentMethod, setPaymentMethod] = useState('')
+  const [paidFromDrawer, setPaidFromDrawer] = useState(false)
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -68,9 +70,10 @@ export default function ExpensesPage() {
         payment_method: paymentMethod || undefined,
         reference_number: reference.trim() || undefined,
         notes: notes.trim() || undefined,
+        paid_from_drawer: paymentMethod === 'cash' ? paidFromDrawer : false,
       })
       setFormOpen(false)
-      setAmount(''); setDescription(''); setReference(''); setNotes(''); setPaymentMethod('')
+      setAmount(''); setDescription(''); setReference(''); setNotes(''); setPaymentMethod(''); setPaidFromDrawer(false)
       await load()
     } catch (e: any) {
       setFormError(e.message || 'Failed to record expense')
@@ -84,7 +87,7 @@ export default function ExpensesPage() {
       confirmText: 'Clear', cancelText: 'Keep editing', isDestructive: false,
       onConfirm: () => {
         setFormOpen(false); setAmount(''); setDescription(''); setReference(''); setNotes('')
-        setPaymentMethod(''); setFormError('')
+        setPaymentMethod(''); setPaidFromDrawer(false); setFormError('')
         hideConfirmation()
       },
     })
@@ -150,11 +153,26 @@ export default function ExpensesPage() {
                   </div>
                   <div>
                     <label className="text-xs font-medium block mb-1">Payment Method</label>
-                    <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm">
+                    <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value); if (e.target.value === 'cash') setPaidFromDrawer(true); else setPaidFromDrawer(false) }} className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm">
                       <option value="">—</option>
                       {PAYMENT_METHODS.map(m => <option key={m} value={m}>{paymentLabel(m)}</option>)}
                     </select>
                   </div>
+                  {paymentMethod === 'cash' && (
+                    <div className="sm:col-span-2 bg-muted/50 border border-border rounded-lg p-3 flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        id="paidFromDrawer"
+                        checked={paidFromDrawer}
+                        onChange={e => setPaidFromDrawer(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-border text-accent"
+                      />
+                      <label htmlFor="paidFromDrawer" className="text-xs cursor-pointer select-none">
+                        <span className="font-semibold block text-foreground">Paid from Main Cash Drawer</span>
+                        <span className="text-muted-foreground">Check if cash was taken out of the POS register drawer. Uncheck if paid from personal wallet, bank, or external funds.</span>
+                      </label>
+                    </div>
+                  )}
                   <div>
                     <label className="text-xs font-medium block mb-1">Reference #</label>
                     <input placeholder="e.g. OR-1234" value={reference} onChange={e => setReference(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm" />
@@ -191,7 +209,12 @@ export default function ExpensesPage() {
                       <td className="px-4 py-3 text-muted-foreground">{e.expense_date}</td>
                       <td className="px-4 py-3 font-medium">{e.description}{e.reference_number ? <span className="text-xs text-muted-foreground ml-1">({e.reference_number})</span> : null}</td>
                       <td className="px-4 py-3">{e.expense_category?.name || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{e.payment_method ? paymentLabel(e.payment_method) : '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {e.payment_method ? paymentLabel(e.payment_method) : '—'}
+                        {e.paid_from_drawer && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">Drawer</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right font-medium text-destructive">{formatPHP(Number(e.amount))}</td>
                     </tr>
                   ))}

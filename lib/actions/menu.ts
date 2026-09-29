@@ -39,6 +39,16 @@ export async function updateCategory(id: string, data: { name?: string; sort_ord
   return result
 }
 
+export async function deleteCategory(id: string) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('menu_categories')
+    .update({ is_active: false })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
 export async function getMenuItems(categoryId?: string) {
   await requireRole(['admin'])()
   const supabase = await createClient()

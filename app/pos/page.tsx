@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import AppLayout from '@/components/app-layout'
 import { useCart } from '@/lib/contexts/cart-context'
 import { useModal } from '@/lib/contexts/modal-context'
@@ -9,6 +11,7 @@ import { X, Trash2, Search, Plus, Printer } from 'lucide-react'
 import type { CartItem } from '@/lib/types'
 import { getCustomers } from '@/lib/actions/customers'
 import { getBusinessSettings } from '@/lib/actions/settings'
+import { getActiveCashShift } from '@/lib/actions/cash-shifts'
 import { printReceipt, printKitchenTicket, getAutoPrint, type ReceiptData } from '@/lib/utils/printer'
 import { openCashDrawer } from '@/lib/utils/cash-drawer'
 import { offlineStore } from '@/lib/offline/store'
@@ -44,6 +47,7 @@ export default function POSPage() {
 
   const { items, addItem, removeItem, updateQuantity, clearCart, getSubtotal, getItemKey } = useCart()
   const { showConfirmation, showLoading, hideLoading, hideConfirmation } = useModal()
+  const router = useRouter()
   const { currentStaff } = useAuth()
   const idempotencyKeyRef = useRef(crypto.randomUUID())
   const isProcessingRef = useRef(false)
@@ -55,6 +59,16 @@ export default function POSPage() {
   const [syncIssues, setSyncIssues] = useState(0)
   const [showSyncModal, setShowSyncModal] = useState(false)
   const [discountType, setDiscountType] = useState<'senior_pwd' | 'employee' | null>(null)
+  const [cashShift, setCashShift] = useState<any>(null)
+
+  const refreshShift = async () => {
+    try {
+      const current = await getActiveCashShift()
+      setCashShift(current)
+    } catch {
+      setCashShift(null)
+    }
+  }
 
   const loadMenu = async () => {
     try {
@@ -80,6 +94,15 @@ export default function POSPage() {
   }
 
   useEffect(() => { loadMenu() }, [])
+  useEffect(() => {
+    refreshShift()
+    const onFocus = () => refreshShift()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
+  useEffect(() => {
+    if (showCheckout) refreshShift()
+  }, [showCheckout])
 
   // Don't let a discount linger onto the next sale after the cart empties.
   useEffect(() => { if (items.length === 0) setDiscountType(null) }, [items.length])
@@ -255,8 +278,31 @@ export default function POSPage() {
     if (!ok) window.print()
   }
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (items.length === 0 || isProcessingRef.current) return
+    let activeShift = cashShift
+    if (paymentMethod === 'cash' && !offline) {
+      if (!activeShift) {
+        try {
+          activeShift = await getActiveCashShift()
+          setCashShift(activeShift)
+        } catch { /* ignore */ }
+      }
+      if (!activeShift) {
+        showConfirmation({
+          title: 'Open a Cash Shift',
+          description: 'Main Drawer is currently closed. Please open a cash shift before accepting cash payments.',
+          confirmText: 'Go to Cash Shifts',
+          cancelText: 'Cancel',
+          onConfirm: () => {
+            hideConfirmation()
+            router.push('/cash-shifts')
+          },
+          isDestructive: false,
+        })
+        return
+      }
+    }
     const finalTotal = getFinalTotal()
     const tendered = parseFloat(amountTendered) || 0
 
@@ -453,6 +499,18 @@ export default function POSPage() {
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-3xl font-semibold">POS Terminal</h1>
               <div className="flex items-center gap-2">
+                <Link
+                  href="/cash-shifts"
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                    cashShift ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-red-100 text-red-800 hover:bg-red-200'
+                  }`}
+                  title="Click to view or manage cash drawer"
+                >
+                  <span className={`w-2 h-2 rounded-full ${cashShift ? 'bg-green-600' : 'bg-red-600'}`} />
+                  {cashShift
+                    ? `Drawer: ₱${Number(cashShift.expected_cash || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+                    : 'Drawer: Closed'}
+                </Link>
                 {offline && <span className="px-3 py-1 rounded-full bg-destructive text-white text-xs font-semibold">Offline — saving locally</span>}
                 {syncIssues > 0 && (
                   <button onClick={() => setShowSyncModal(true)} className="px-3 py-1 rounded-full bg-yellow-500 text-white text-xs font-semibold hover:bg-yellow-600">⚠ {syncIssues} pending sync</button>
@@ -595,6 +653,16 @@ export default function POSPage() {
                       <button key={m} onClick={() => setPaymentMethod(m)} className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${paymentMethod === m ? 'bg-accent text-white' : 'bg-muted text-foreground'}`}>{PAYMENT_LABELS[m]}</button>
                     ))}
                   </div>
+                  {isCash(paymentMethod) && !cashShift && !offline && (
+                    <Link href="/cash-shifts" className="text-xs text-destructive hover:underline mt-2 block font-medium">
+                      ⚠ Open a cash shift before accepting cash payments &rarr;
+                    </Link>
+                  )}
+                  {isCash(paymentMethod) && cashShift && (
+                    <p className="text-xs text-green-700 mt-2 font-medium">
+                      ✓ Main Drawer is open (₱{Number(cashShift.expected_cash || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}).
+                    </p>
+                  )}
                 </div>
                 {!isCash(paymentMethod) && (
                   <div>

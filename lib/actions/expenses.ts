@@ -14,8 +14,9 @@ export async function getExpenseCategories() {
 export async function createExpense(data: {
   expense_category_id: string; description: string; amount: number
   expense_date?: string; payment_method?: string; reference_number?: string; notes?: string
+  paid_from_drawer?: boolean
 }) {
-  await requireRole(['admin'])()
+  const user = await requireRole(['admin'])()
   const supabase = await createClient()
   const bizDate = await getBusinessDateServer()
   const { data: result, error } = await supabase.from('expenses').insert({
@@ -27,6 +28,8 @@ export async function createExpense(data: {
     reference_number: data.reference_number,
     notes: data.notes,
     business_date: bizDate,
+    recorded_by_user_id: user.id,
+    paid_from_drawer: Boolean(data.paid_from_drawer),
   }).select().single()
   if (error) throw new Error(error.message)
   return result

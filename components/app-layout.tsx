@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/contexts/auth-context'
 import { useModal } from '@/lib/contexts/modal-context'
-import { LogOut, BarChart3, ShoppingCart, Package, Coffee, UtensilsCrossed, Users, FileText, Settings, Home, Menu, X, ShieldOff, PieChart, Layers, CreditCard, Receipt } from 'lucide-react'
+import { LogOut, BarChart3, ShoppingCart, Package, Coffee, UtensilsCrossed, Users, FileText, Settings, Home, Menu, X, ShieldOff, PieChart, Layers, CreditCard, Receipt, WalletCards } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 const navItems = [
@@ -16,6 +16,7 @@ const navItems = [
   { icon: UtensilsCrossed, label: 'Orders', href: '/orders', roles: ['admin', 'cashier', 'kds'] },
   { icon: FileText, label: 'Sales', href: '/sales', roles: ['admin'] },
   { icon: Receipt, label: 'Expenses', href: '/expenses', roles: ['admin'] },
+  { icon: WalletCards, label: 'Cash Shifts', href: '/cash-shifts', roles: ['admin', 'cashier'] },
   { icon: PieChart, label: 'Reports', href: '/reports', roles: ['admin', 'cashier'] },
   { icon: BarChart3, label: 'Sales by Item', href: '/reports/items', roles: ['admin'] },
   { icon: Layers, label: 'Sales by Category', href: '/reports/category', roles: ['admin'] },
