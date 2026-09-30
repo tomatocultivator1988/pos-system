@@ -124,7 +124,7 @@ export async function createVariant(data: {
 
 export async function updateVariant(id: string, data: Partial<{
   name: string; price_mode: 'override' | 'adjustment'
-  price_override: number; price_adjustment: number
+  price_override: number | null; price_adjustment: number | null
   is_default: boolean; is_active: boolean; sort_order: number
 }>) {
   await requireRole(['admin'])()
@@ -137,6 +137,17 @@ export async function updateVariant(id: string, data: Partial<{
     .single()
   if (error) throw new Error(error.message)
   return result
+}
+
+export async function deleteVariant(id: string) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('menu_item_variants')
+    .update({ is_active: false })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+  return { success: true }
 }
 
 export async function getAddonGroups(menuItemId: string) {

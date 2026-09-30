@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AppLayout from '@/components/app-layout'
-import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, getAddonGroups, createAddonGroup, createAddon, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
+import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, updateVariant, deleteVariant, getAddonGroups, createAddonGroup, createAddon, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
 import { getIngredients } from '@/lib/actions/inventory'
 import { Plus, Pencil, Trash2, ChefHat, Tag, X } from 'lucide-react'
 import { useModal } from '@/lib/contexts/modal-context'
@@ -35,6 +35,11 @@ export default function MenuPage() {
   const [vName, setVName] = useState('')
   const [vPrice, setVPrice] = useState('')
   const [vMode, setVMode] = useState<'override' | 'adjustment'>('override')
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null)
+  const [editVName, setEditVName] = useState('')
+  const [editVMode, setEditVMode] = useState<'override' | 'adjustment'>('override')
+  const [editVPrice, setEditVPrice] = useState('')
+  const [variantBusy, setVariantBusy] = useState(false)
   const [groups, setGroups] = useState<any[]>([])
   const [gName, setGName] = useState('')
   const [addonNames, setAddonNames] = useState<Record<string, string>>({})
@@ -211,6 +216,87 @@ export default function MenuPage() {
     }
   }
 
+  const startEditVariant = (v: any) => {
+    setEditingVariantId(v.id)
+    setEditVName(v.name)
+    setEditVMode((v.price_mode as any) || 'override')
+    const currentPrice = v.price_mode === 'override' ? (v.price_override ?? 0) : (v.price_adjustment ?? 0)
+    setEditVPrice(String(currentPrice))
+  }
+
+  const cancelEditVariant = () => {
+    setEditingVariantId(null)
+    setEditVName('')
+    setEditVPrice('')
+  }
+
+  const saveEditVariant = async (variantId: string) => {
+    if (!editVName.trim() || editVPrice === '') return
+    const priceNum = parseFloat(editVPrice)
+    if (isNaN(priceNum) || (editVMode === 'override' && priceNum < 0)) {
+      showConfirmation({
+        title: 'Invalid Price',
+        description: 'Please enter a valid price for the variant.',
+        confirmText: 'OK',
+        cancelText: '',
+        onConfirm: () => hideConfirmation(),
+        isDestructive: false,
+      })
+      return
+    }
+
+    setVariantBusy(true)
+    try {
+      const updated = await updateVariant(variantId, {
+        name: editVName.trim(),
+        price_mode: editVMode,
+        price_override: editVMode === 'override' ? priceNum : null,
+        price_adjustment: editVMode === 'adjustment' ? priceNum : null,
+      })
+      setVariants(prev => prev.map(v => v.id === variantId ? { ...v, ...updated } : v))
+      setEditingVariantId(null)
+      await load()
+    } catch (err: any) {
+      showConfirmation({
+        title: 'Error Updating Variant',
+        description: err.message || 'Could not update variant.',
+        confirmText: 'OK',
+        cancelText: '',
+        onConfirm: () => hideConfirmation(),
+        isDestructive: false,
+      })
+    } finally {
+      setVariantBusy(false)
+    }
+  }
+
+  const removeVariant = (v: any) => {
+    showConfirmation({
+      title: 'Delete Variant',
+      description: `Are you sure you want to remove variant "${v.name}"?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: async () => {
+        hideConfirmation()
+        try {
+          await deleteVariant(v.id)
+          setVariants(prev => prev.filter(item => item.id !== v.id))
+          await load()
+        } catch (err: any) {
+          showConfirmation({
+            title: 'Error Deleting Variant',
+            description: err.message || 'Could not delete variant.',
+            confirmText: 'OK',
+            cancelText: '',
+            onConfirm: () => hideConfirmation(),
+            isDestructive: false,
+          })
+        }
+      },
+    })
+  }
+
   const addAddonToGroup = async (group: any) => {
     const name = (addonNames[group.id] || '').trim()
     if (!name) return
@@ -382,15 +468,149 @@ export default function MenuPage() {
               <h2 className="text-lg font-semibold mb-4">Recipe & Options: {recipeItem.name}</h2>
 
               <section className="mb-6">
-                <h3 className="font-medium mb-2">Variants</h3>
-                <div className="space-y-1 mb-2">
-                  {variants.map(v => <div key={v.id} className="flex justify-between text-sm bg-muted rounded px-3 py-1.5"><span>{v.name} {v.price_mode === 'override' ? `₱${v.price_override}` : `±₱${v.price_adjustment}`}</span></div>)}
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium">Variants</h3>
+                  <span className="text-xs text-muted-foreground">Click pencil to edit price or name</span>
                 </div>
-                <div className="flex gap-2">
-                  <input id="variant-name" placeholder="Name" value={vName} onChange={e => setVName(e.target.value)} className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm" />
-                  <select value={vMode} onChange={e => setVMode(e.target.value as any)} className="px-2 py-2 border border-border rounded-lg bg-background text-sm"><option value="override">Override</option><option value="adjustment">Adjust</option></select>
-                   <input id="variant-price" placeholder="Price" type="number" step="0.01" min="0" value={vPrice} onChange={e => setVPrice(e.target.value)} className="w-24 px-3 py-2 border border-border rounded-lg bg-background text-sm" />
-                  <button onClick={addVariant} className="bg-accent text-white px-3 py-2 rounded-lg text-sm">Add Variant</button>
+                <div className="space-y-2 mb-3">
+                  {variants.map(v => {
+                    const isEditingThis = editingVariantId === v.id
+                    if (isEditingThis) {
+                      return (
+                        <div key={v.id} className="p-3 bg-card border-2 border-accent/40 rounded-xl space-y-2.5 shadow-xs">
+                          <div className="text-xs font-semibold text-accent uppercase tracking-wider">Editing Variant</div>
+                          <div className="flex flex-wrap gap-2 items-center">
+                            <input
+                              type="text"
+                              placeholder="Variant Name"
+                              value={editVName}
+                              onChange={e => setEditVName(e.target.value)}
+                              className="flex-1 min-w-[130px] px-3 py-1.5 border border-border rounded-lg bg-background text-sm font-medium focus:outline-accent"
+                            />
+                            <select
+                              value={editVMode}
+                              onChange={e => setEditVMode(e.target.value as any)}
+                              className="px-2 py-1.5 border border-border rounded-lg bg-background text-xs"
+                            >
+                              <option value="override">Override Price (₱)</option>
+                              <option value="adjustment">Price Adjustment (±₱)</option>
+                            </select>
+                            <div className="relative w-28">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-mono">₱</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={editVPrice}
+                                onChange={e => setEditVPrice(e.target.value)}
+                                className="w-full pl-6 pr-2 py-1.5 border border-border rounded-lg bg-background text-sm font-mono font-medium focus:outline-accent"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={cancelEditVariant}
+                              disabled={variantBusy}
+                              className="px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:bg-muted"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveEditVariant(v.id)}
+                              disabled={variantBusy || !editVName.trim() || editVPrice === ''}
+                              className="px-3.5 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+                            >
+                              {variantBusy ? 'Saving...' : 'Save Price'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    const displayPrice = v.price_mode === 'override'
+                      ? `₱${Number(v.price_override || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+                      : `${Number(v.price_adjustment || 0) >= 0 ? '+' : ''}₱${Number(v.price_adjustment || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+
+                    return (
+                      <div
+                        key={v.id}
+                        className="flex items-center justify-between text-sm bg-muted/60 hover:bg-muted border border-border/50 rounded-xl px-3.5 py-2 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-medium text-foreground">{v.name}</span>
+                          <span className="text-xs px-2.5 py-0.5 rounded-full bg-background border border-border font-mono font-semibold text-accent">
+                            {displayPrice}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => startEditVariant(v)}
+                            className="p-1.5 rounded-lg hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
+                            title="Edit price & name"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeVariant(v)}
+                            className="p-1.5 rounded-lg hover:bg-background text-muted-foreground hover:text-destructive transition-colors"
+                            title="Delete variant"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {variants.length === 0 && (
+                    <p className="text-xs text-muted-foreground py-2 text-center">No variants added yet. Add sizes or options below.</p>
+                  )}
+                </div>
+
+                {/* Add Variant Form */}
+                <div className="p-3 bg-muted/30 border border-dashed border-border rounded-xl">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Add New Variant</div>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      id="variant-name"
+                      placeholder="Variant name (e.g. 16oz Iced)"
+                      value={vName}
+                      onChange={e => setVName(e.target.value)}
+                      className="flex-1 min-w-[140px] px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-accent"
+                    />
+                    <select
+                      value={vMode}
+                      onChange={e => setVMode(e.target.value as any)}
+                      className="px-2 py-2 border border-border rounded-lg bg-background text-xs"
+                    >
+                      <option value="override">Override (₱)</option>
+                      <option value="adjustment">Adjust (±₱)</option>
+                    </select>
+                    <div className="relative w-28">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-mono">₱</span>
+                      <input
+                        id="variant-price"
+                        placeholder="0.00"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={vPrice}
+                        onChange={e => setVPrice(e.target.value)}
+                        className="w-full pl-6 pr-2 py-2 border border-border rounded-lg bg-background text-sm font-mono focus:outline-accent"
+                      />
+                    </div>
+                    <button
+                      onClick={addVariant}
+                      disabled={!vName.trim() || !vPrice}
+                      className="bg-accent text-white px-3.5 py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      Add Variant
+                    </button>
+                  </div>
                 </div>
               </section>
 
