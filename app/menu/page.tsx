@@ -102,14 +102,22 @@ export default function MenuPage() {
       return
     }
     const categoryId = formCategory || categories[0]?.id
-    if (!categoryId) return
+    if (!categoryId) {
+      showConfirmation({ title: 'Category Required', description: 'Please create at least one category before adding menu items.', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+      return
+    }
+    const priceNum = parseFloat(formPrice)
+    if (isNaN(priceNum) || priceNum < 0) {
+      showConfirmation({ title: 'Validation', description: 'Base price must be 0 or greater.', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+      return
+    }
     setSaving(true)
     try {
       if (editing) {
         const removingImage = !!editing.image_url && !formImageUrl
         await updateMenuItem(editing.id, {
-          name: formName, category_id: categoryId, base_price: parseFloat(formPrice) || 0,
-          description: formDesc, loyalty_points_earned: parseInt(formPoints) || 0, send_to_kds: formSend, is_active: formActive,
+          name: formName.trim(), category_id: categoryId, base_price: priceNum,
+          description: formDesc.trim(), loyalty_points_earned: Math.max(0, parseInt(formPoints) || 0), send_to_kds: formSend, is_active: formActive,
           image_url: formImageUrl || null,
         })
         if (removingImage) await deleteMenuImage(editing.image_url!)
@@ -461,7 +469,23 @@ export default function MenuPage() {
 
   const addRecipeRow = () => {
     if (!ingSel || !ingQty) return
-    setRecipeRows(prev => [...prev, { ingredientId: ingSel, quantity: ingQty }]); setIngSel(''); setIngQty('')
+    const qtyNum = parseFloat(ingQty)
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      showConfirmation({ title: 'Validation', description: 'Quantity must be greater than 0.', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+      return
+    }
+    setRecipeRows(prev => {
+      const idx = prev.findIndex(r => r.ingredientId === ingSel)
+      if (idx >= 0) {
+        const copy = [...prev]
+        const currentQty = parseFloat(copy[idx].quantity) || 0
+        copy[idx] = { ...copy[idx], quantity: String(Math.round((currentQty + qtyNum) * 1000) / 1000) }
+        return copy
+      }
+      return [...prev, { ingredientId: ingSel, quantity: ingQty }]
+    })
+    setIngSel('')
+    setIngQty('')
   }
   const saveRecipe = async () => {
     if (!recipeItem || scopeLoading) return
@@ -999,21 +1023,39 @@ export default function MenuPage() {
                   </div>
 
                   <div className="space-y-1.5 mb-3">
-                    {recipeRows.map((r, i) => (
-                      <div key={i} className="flex justify-between items-center text-sm bg-background border border-border/60 rounded-lg px-3 py-2">
-                        <span className="font-medium text-foreground">{allIngredients.find(x => x.id === r.ingredientId)?.name ?? r.ingredientId}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-bold text-accent text-xs bg-accent/10 px-2 py-0.5 rounded">{r.quantity}</span>
-                          <button
-                            onClick={() => setRecipeRows(prev => prev.filter((_, j) => j !== i))}
-                            className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors"
-                            title="Remove ingredient"
-                          >
-                            x
-                          </button>
+                    {recipeRows.map((r, i) => {
+                      const ing = allIngredients.find(x => x.id === r.ingredientId)
+                      return (
+                        <div key={i} className="flex justify-between items-center text-sm bg-background border border-border/70 rounded-lg px-3 py-2">
+                          <span className="font-medium text-foreground">{ing?.name ?? r.ingredientId}</span>
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center">
+                              <input
+                                type="number"
+                                step="0.001"
+                                min="0.001"
+                                value={r.quantity}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  setRecipeRows(prev => prev.map((row, j) => j === i ? { ...row, quantity: val } : row))
+                                }}
+                                className="w-20 px-2 py-1 border border-border rounded-lg bg-background text-xs font-mono font-semibold text-right focus:outline-accent"
+                              />
+                              <span className="text-xs text-muted-foreground font-mono ml-1.5 min-w-[24px]">
+                                {ing?.base_unit || ''}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setRecipeRows(prev => prev.filter((_, j) => j !== i))}
+                              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 p-1.5 rounded-lg transition-colors ml-1"
+                              title="Remove ingredient"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                     {recipeRows.length === 0 && (
                       <p className="text-xs text-muted-foreground py-3 text-center italic">
                         No ingredients added yet for this {scope === 'item' ? 'base item' : scope === 'variant' ? 'variant' : 'add-on'}. Select an ingredient below and click Add.
