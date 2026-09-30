@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import AppLayout from '@/components/app-layout'
-import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, updateVariant, deleteVariant, getAddonGroups, createAddonGroup, createAddon, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
+import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, updateVariant, deleteVariant, getAddonGroups, createAddonGroup, deleteAddonGroup, createAddon, updateAddon, deleteAddon, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
 import { getIngredients } from '@/lib/actions/inventory'
-import { Plus, Pencil, Trash2, ChefHat, Tag, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChefHat, Tag, X, Check } from 'lucide-react'
 import { useModal } from '@/lib/contexts/modal-context'
 
 interface Category { id: string; name: string; sort_order: number; is_active: boolean }
@@ -43,6 +43,11 @@ export default function MenuPage() {
   const [groups, setGroups] = useState<any[]>([])
   const [gName, setGName] = useState('')
   const [addonNames, setAddonNames] = useState<Record<string, string>>({})
+  const [addonPrices, setAddonPrices] = useState<Record<string, string>>({})
+  const [editingAddonId, setEditingAddonId] = useState<string | null>(null)
+  const [editAddonName, setEditAddonName] = useState('')
+  const [editAddonPrice, setEditAddonPrice] = useState('')
+  const [addonBusy, setAddonBusy] = useState(false)
   const [scope, setScope] = useState<'item' | 'variant' | 'addon'>('item')
   const [scopeRef, setScopeRef] = useState<string>('')
   const [recipeRows, setRecipeRows] = useState<{ ingredientId: string; quantity: string }[]>([])
@@ -302,17 +307,138 @@ export default function MenuPage() {
   const addAddonToGroup = async (group: any) => {
     const name = (addonNames[group.id] || '').trim()
     if (!name) return
+    const priceNum = parseFloat(addonPrices[group.id] || '0') || 0
     try {
-      const addon = await createAddon({ addon_group_id: group.id, name })
+      const addon = await createAddon({ addon_group_id: group.id, name, price_adjustment: priceNum })
       setGroups(prev => prev.map(current =>
         current.id === group.id
           ? { ...current, addons: [...(current.addons || []), addon] }
           : current
       ))
       setAddonNames(prev => ({ ...prev, [group.id]: '' }))
+      setAddonPrices(prev => ({ ...prev, [group.id]: '' }))
     } catch (err: any) {
       showConfirmation({ title: 'Error', description: `"${name}" already exists in this group.`, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
     }
+  }
+
+  const startEditAddon = (a: any) => {
+    setEditingAddonId(a.id)
+    setEditAddonName(a.name)
+    setEditAddonPrice(String(a.price_adjustment ?? 0))
+  }
+
+  const cancelEditAddon = () => {
+    setEditingAddonId(null)
+    setEditAddonName('')
+    setEditAddonPrice('')
+  }
+
+  const saveEditAddon = async (addonId: string, groupId: string) => {
+    if (!editAddonName.trim() || editAddonPrice === '') return
+    const priceNum = parseFloat(editAddonPrice)
+    if (isNaN(priceNum) || priceNum < 0) {
+      showConfirmation({
+        title: 'Invalid Price',
+        description: 'Please enter a valid price adjustment (0 or greater).',
+        confirmText: 'OK',
+        cancelText: '',
+        onConfirm: () => hideConfirmation(),
+        isDestructive: false,
+      })
+      return
+    }
+
+    setAddonBusy(true)
+    try {
+      const updated = await updateAddon(addonId, {
+        name: editAddonName.trim(),
+        price_adjustment: priceNum,
+      })
+      setGroups(prev => prev.map(g =>
+        g.id === groupId
+          ? {
+              ...g,
+              addons: (g.addons || []).map((a: any) => a.id === addonId ? { ...a, ...updated } : a),
+            }
+          : g
+      ))
+      cancelEditAddon()
+    } catch (err: any) {
+      showConfirmation({
+        title: 'Error Updating Add-on',
+        description: err.message || 'Could not update add-on.',
+        confirmText: 'OK',
+        cancelText: '',
+        onConfirm: () => hideConfirmation(),
+        isDestructive: false,
+      })
+    } finally {
+      setAddonBusy(false)
+    }
+  }
+
+  const removeAddon = (addon: any, groupId: string) => {
+    showConfirmation({
+      title: 'Delete Add-on',
+      description: `Are you sure you want to remove add-on "${addon.name}"?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: async () => {
+        hideConfirmation()
+        try {
+          await deleteAddon(addon.id)
+          setGroups(prev => prev.map(g =>
+            g.id === groupId
+              ? { ...g, addons: (g.addons || []).filter((a: any) => a.id !== addon.id) }
+              : g
+          ))
+          if (scope === 'addon' && scopeRef === addon.id) {
+            selectRecipeScope('item')
+          }
+        } catch (err: any) {
+          showConfirmation({
+            title: 'Error Deleting Add-on',
+            description: err.message || 'Could not delete add-on.',
+            confirmText: 'OK',
+            cancelText: '',
+            onConfirm: () => hideConfirmation(),
+            isDestructive: false,
+          })
+        }
+      },
+    })
+  }
+
+  const removeAddonGroup = (group: any) => {
+    showConfirmation({
+      title: 'Delete Add-on Group',
+      description: `Are you sure you want to remove group "${group.name}" and all its add-ons?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: async () => {
+        hideConfirmation()
+        try {
+          await deleteAddonGroup(group.id)
+          setGroups(prev => prev.filter(g => g.id !== group.id))
+          const removedAddonIds = new Set((group.addons || []).map((a: any) => a.id))
+          if (scope === 'addon' && removedAddonIds.has(scopeRef)) {
+            selectRecipeScope('item')
+          }
+        } catch (err: any) {
+          showConfirmation({
+            title: 'Error Deleting Group',
+            description: err.message || 'Could not delete add-on group.',
+            confirmText: 'OK',
+            cancelText: '',
+            onConfirm: () => hideConfirmation(),
+            isDestructive: false,
+          })
+        }
+      },
+    })
   }
 
   const selectRecipeScope = async (nextScope: 'item' | 'variant' | 'addon', refId = '') => {
@@ -625,26 +751,167 @@ export default function MenuPage() {
               </section>
 
               <section className="mb-6">
-                <h3 className="font-medium mb-2">Add-on Groups</h3>
-                <div className="flex gap-2 mb-2">
-                  <input placeholder="Group name" value={gName} onChange={e => setGName(e.target.value)} className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm" />
-                  <button onClick={async () => { if (!gName.trim() || !recipeItem) return; try { const g = await createAddonGroup({ menu_item_id: recipeItem.id, name: gName }); setGroups(prev => [...prev, { ...(g as any), addons: [] }]); setGName('') } catch (err: any) { showConfirmation({ title: 'Error', description: `Group "${gName}" already exists.`, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false }) } }} className="bg-accent text-white px-3 py-2 rounded-lg text-sm">Add Group</button>
+                <h3 className="font-medium mb-1">Add-on Groups (Extras, Syrups, Milk Options)</h3>
+                <p className="text-xs text-muted-foreground mb-3">Group optional choices for this item (e.g. Milk Options, Syrups, Extras) with price adjustments.</p>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    placeholder="New Group Name (e.g. Milk Options, Syrups)"
+                    value={gName}
+                    onChange={e => setGName(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!gName.trim() || !recipeItem) return
+                      try {
+                        const g = await createAddonGroup({ menu_item_id: recipeItem.id, name: gName.trim() })
+                        setGroups(prev => [...prev, { ...(g as any), addons: [] }])
+                        setGName('')
+                      } catch (err: any) {
+                        showConfirmation({
+                          title: 'Error',
+                          description: `Group "${gName}" already exists.`,
+                          confirmText: 'OK',
+                          cancelText: '',
+                          onConfirm: () => hideConfirmation(),
+                          isDestructive: false,
+                        })
+                      }
+                    }}
+                    disabled={!gName.trim()}
+                    className="bg-accent text-white px-3.5 py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
+                  >
+                    Add Group
+                  </button>
                 </div>
-                {groups.map(g => (
-                  <div key={g.id} className="mb-2 pl-3 border-l-2 border-border">
-                    <p className="text-sm font-medium">{g.name}</p>
-                    <div className="flex gap-2 mt-1">
-                      <input
-                        placeholder="Add-on name"
-                        value={addonNames[g.id] || ''}
-                        onChange={e => setAddonNames(prev => ({ ...prev, [g.id]: e.target.value }))}
-                        onKeyDown={e => { if (e.key === 'Enter') addAddonToGroup(g) }}
-                        className="flex-1 min-w-0 px-2 py-1.5 border border-border rounded-lg bg-background text-sm"
-                      />
-                      <button onClick={() => addAddonToGroup(g)} disabled={!(addonNames[g.id] || '').trim()} className="shrink-0 bg-accent text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50">Add Add-on</button>
+
+                <div className="space-y-3">
+                  {groups.map(g => (
+                    <div key={g.id} className="p-3 rounded-xl border border-border bg-muted/20">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-foreground">{g.name}</span>
+                        <button
+                          onClick={() => removeAddonGroup(g)}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          title={`Delete group "${g.name}"`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Existing Add-ons in this group */}
+                      <div className="space-y-1.5 mb-2.5">
+                        {(g.addons || []).map((a: any) => (
+                          <div key={a.id} className="flex items-center justify-between text-xs bg-background border border-border/70 rounded-lg px-2.5 py-1.5">
+                            {editingAddonId === a.id ? (
+                              <div className="flex items-center gap-2 flex-1 mr-1">
+                                <input
+                                  value={editAddonName}
+                                  onChange={e => setEditAddonName(e.target.value)}
+                                  className="flex-1 min-w-0 px-2 py-1 border border-border rounded bg-background text-xs"
+                                  placeholder="Add-on name"
+                                  autoFocus
+                                />
+                                <div className="relative w-24 shrink-0">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px] font-mono">+₱</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={editAddonPrice}
+                                    onChange={e => setEditAddonPrice(e.target.value)}
+                                    className="w-full pl-6 pr-2 py-1 border border-border rounded bg-background text-xs font-mono"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => saveEditAddon(a.id, g.id)}
+                                  disabled={addonBusy || !editAddonName.trim() || editAddonPrice === ''}
+                                  className="bg-accent text-white p-1 rounded hover:opacity-90 disabled:opacity-50"
+                                  title="Save"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={cancelEditAddon}
+                                  disabled={addonBusy}
+                                  className="text-muted-foreground hover:text-foreground p-1 rounded"
+                                  title="Cancel"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-medium text-foreground truncate">{a.name}</span>
+                                  <span className="font-mono text-accent text-[11px] bg-accent/10 px-1.5 py-0.5 rounded font-semibold shrink-0">
+                                    +₱{Number(a.price_adjustment || 0).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => startEditAddon(a)}
+                                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                    title="Edit name/price"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => removeAddon(a, g.id)}
+                                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    title="Delete add-on"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                        {(!g.addons || g.addons.length === 0) && (
+                          <p className="text-[11px] text-muted-foreground italic px-1">No add-ons in this group yet.</p>
+                        )}
+                      </div>
+
+                      {/* Add new add-on to this group */}
+                      <div className="flex gap-2">
+                        <input
+                          placeholder="Add-on name (e.g. Oat Milk, Extra Shot)"
+                          value={addonNames[g.id] || ''}
+                          onChange={e => setAddonNames(prev => ({ ...prev, [g.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') addAddonToGroup(g) }}
+                          className="flex-1 min-w-0 px-2.5 py-1.5 border border-border rounded-lg bg-background text-xs"
+                        />
+                        <div className="relative w-24 shrink-0">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-[10px] font-mono">+₱</span>
+                          <input
+                            placeholder="0.00"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={addonPrices[g.id] || ''}
+                            onChange={e => setAddonPrices(prev => ({ ...prev, [g.id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') addAddonToGroup(g) }}
+                            className="w-full pl-6 pr-2 py-1.5 border border-border rounded-lg bg-background text-xs font-mono"
+                          />
+                        </div>
+                        <button
+                          onClick={() => addAddonToGroup(g)}
+                          disabled={!(addonNames[g.id] || '').trim()}
+                          className="shrink-0 bg-accent text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                        >
+                          Add
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                  {groups.length === 0 && (
+                    <div className="text-center py-4 border border-dashed border-border rounded-xl text-xs text-muted-foreground">
+                      No add-on groups added yet. Create one above (e.g. &quot;Milk Options&quot; or &quot;Syrups&quot;).
+                    </div>
+                  )}
+                </div>
               </section>
 
               <section className="mb-6">

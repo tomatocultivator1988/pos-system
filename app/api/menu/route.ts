@@ -62,11 +62,16 @@ export async function GET() {
       ) === i
     )
 
-    const { data: addonGroups } = await supabase
+    const { data: rawAddonGroups } = await supabase
       .from('addon_groups')
       .select('*, addons(*)')
       .eq('is_active', true)
       .order('sort_order')
+
+    const addonGroups = (rawAddonGroups || []).map((g: any) => ({
+      ...g,
+      addons: (g.addons || []).filter((a: any) => a.is_active !== false),
+    }))
 
     // Stock availability per menu item. Checkout consumes the variant recipe
     // when the chosen variant has one, otherwise the base recipe — so the

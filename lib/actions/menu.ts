@@ -159,7 +159,10 @@ export async function getAddonGroups(menuItemId: string) {
     .eq('menu_item_id', menuItemId)
     .eq('is_active', true)
     .order('sort_order')
-  return data ?? []
+  return (data as any[] ?? []).map((g: any) => ({
+    ...g,
+    addons: (g.addons || []).filter((a: any) => a.is_active !== false),
+  }))
 }
 
 export async function createAddonGroup(data: {
@@ -177,6 +180,17 @@ export async function createAddonGroup(data: {
   return result
 }
 
+export async function deleteAddonGroup(id: string) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('addon_groups')
+    .update({ is_active: false })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+  return { success: true }
+}
+
 export async function createAddon(data: {
   addon_group_id: string; name: string; price_adjustment?: number; sort_order?: number
 }) {
@@ -189,6 +203,35 @@ export async function createAddon(data: {
     .single()
   if (error) throw new Error(error.message)
   return result
+}
+
+export async function updateAddon(id: string, data: Partial<{
+  name: string
+  price_adjustment: number
+  is_active: boolean
+  sort_order: number
+}>) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+  const { data: result, error } = await supabase
+    .from('addons')
+    .update(data)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw new Error(error.message)
+  return result
+}
+
+export async function deleteAddon(id: string) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('addons')
+    .update({ is_active: false })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+  return { success: true }
 }
 
 export async function getRecipeLines(params: {
