@@ -50,6 +50,7 @@ export default function MenuPage() {
   const [ingQty, setIngQty] = useState('')
   const [allIngredients, setAllIngredients] = useState<any[]>([])
   const [scopeLoading, setScopeLoading] = useState(false)
+  const [recipeSavedMsg, setRecipeSavedMsg] = useState('')
 
   const [menuLoading, setMenuLoading] = useState(true)
   const [menuError, setMenuError] = useState<string | null>(null)
@@ -193,6 +194,7 @@ export default function MenuPage() {
 
   const openRecipe = async (it: MenuItem) => {
     setRecipeItem(it); setRecipeOpen(true)
+    setRecipeSavedMsg('')
     const [vs, gs, ings] = await Promise.all([getVariants(it.id), getAddonGroups(it.id), getIngredients()])
     setVariants(vs as any[])
     setGroups(gs as any[])
@@ -318,6 +320,7 @@ export default function MenuPage() {
     setScopeLoading(true)
     setScope(nextScope)
     setScopeRef(refId)
+    setRecipeSavedMsg('')
     try {
       const lines = await getRecipeLines({
         menuItemId: recipeItem.id,
@@ -341,15 +344,20 @@ export default function MenuPage() {
       showConfirmation({ title: 'Validation', description: 'Recipe quantities must be greater than 0.', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
       return
     }
+    setScopeLoading(true)
     try {
       await upsertRecipeLines({
         menuItemId: recipeItem.id, scope, refId: scopeRef || undefined,
         lines: recipeRows.map(r => ({ ingredientId: r.ingredientId, quantity: parseFloat(r.quantity) || 0 })),
       })
-      setRecipeOpen(false)
+      const targetLabel = scope === 'item' ? 'Base Item' : scope === 'variant' ? (variants.find(v => v.id === scopeRef)?.name || 'Variant') : 'Add-on'
+      setRecipeSavedMsg(`✓ Recipe for "${targetLabel}" saved successfully! (${recipeRows.length} ingredient${recipeRows.length === 1 ? '' : 's'})`)
+      setTimeout(() => setRecipeSavedMsg(''), 4000)
       await load()
     } catch (err: any) {
       showConfirmation({ title: 'Error', description: err.message || 'Failed to save recipe', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
+    } finally {
+      setScopeLoading(false)
     }
   }
 
@@ -641,17 +649,44 @@ export default function MenuPage() {
                 <h3 className="font-medium">Inventory Recipe</h3>
                 <p className="text-xs text-muted-foreground mt-1 mb-3">Choose what you are setting up, then add only the ingredients it uses.</p>
 
-                <div className="space-y-3 mb-3">
+                {recipeSavedMsg && (
+                  <div className="mb-3 p-3 rounded-xl bg-green-50 border border-green-200 text-green-800 text-xs font-semibold flex items-center justify-between">
+                    <span>{recipeSavedMsg}</span>
+                  </div>
+                )}
+
+                <div className="space-y-3 mb-4">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">BASE PRODUCT</p>
-                    <button onClick={() => selectRecipeScope('item')} disabled={scopeLoading} className={`px-3 py-1.5 rounded-full text-xs font-medium ${scope === 'item' ? 'bg-accent text-white' : 'bg-muted hover:bg-muted/80'} disabled:opacity-50`}>Base Item</button>
+                    <button
+                      onClick={() => selectRecipeScope('item')}
+                      disabled={scopeLoading}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                        scope === 'item' ? 'bg-accent text-white shadow-xs' : 'bg-muted text-foreground hover:bg-muted/80'
+                      } disabled:opacity-50`}
+                    >
+                      Base Item
+                    </button>
                   </div>
 
                   {variants.length > 0 && (
                     <div>
                       <p className="text-xs font-medium text-muted-foreground mb-1.5">VARIANT RECIPES</p>
                       <div className="flex gap-2 flex-wrap">
-                        {variants.map(v => <button key={v.id} onClick={() => selectRecipeScope('variant', v.id)} disabled={scopeLoading} className={`px-3 py-1.5 rounded-full text-xs font-medium ${scope === 'variant' && scopeRef === v.id ? 'bg-accent text-white' : 'bg-muted hover:bg-muted/80'} disabled:opacity-50`}>{v.name}</button>)}
+                        {variants.map(v => (
+                          <button
+                            key={v.id}
+                            onClick={() => selectRecipeScope('variant', v.id)}
+                            disabled={scopeLoading}
+                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                              scope === 'variant' && scopeRef === v.id
+                                ? 'bg-accent text-white shadow-xs ring-2 ring-accent/30'
+                                : 'bg-muted text-foreground hover:bg-muted/80'
+                            } disabled:opacity-50`}
+                          >
+                            {v.name}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -664,7 +699,20 @@ export default function MenuPage() {
                           <div key={g.id}>
                             <p className="text-xs text-muted-foreground mb-1">{g.name}</p>
                             <div className="flex gap-2 flex-wrap">
-                              {(g.addons || []).map((a: any) => <button key={a.id} onClick={() => selectRecipeScope('addon', a.id)} disabled={scopeLoading} className={`px-3 py-1.5 rounded-full text-xs font-medium ${scope === 'addon' && scopeRef === a.id ? 'bg-accent text-white' : 'bg-muted hover:bg-muted/80'} disabled:opacity-50`}>{a.name}</button>)}
+                              {(g.addons || []).map((a: any) => (
+                                <button
+                                  key={a.id}
+                                  onClick={() => selectRecipeScope('addon', a.id)}
+                                  disabled={scopeLoading}
+                                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                                    scope === 'addon' && scopeRef === a.id
+                                      ? 'bg-accent text-white shadow-xs ring-2 ring-accent/30'
+                                      : 'bg-muted text-foreground hover:bg-muted/80'
+                                  } disabled:opacity-50`}
+                                >
+                                  {a.name}
+                                </button>
+                              ))}
                             </div>
                           </div>
                         ))}
@@ -672,19 +720,60 @@ export default function MenuPage() {
                     </div>
                   )}
                 </div>
-                <p className="text-sm font-medium mb-2">Editing recipe for: {scope === 'item' ? 'Base Item' : scope === 'variant' ? variants.find(v => v.id === scopeRef)?.name : groups.flatMap(g => g.addons || []).find((a: any) => a.id === scopeRef)?.name}</p>
-                <div className="space-y-1 mb-2">
-                  {recipeRows.map((r, i) => (
-                    <div key={i} className="flex justify-between text-sm bg-muted rounded px-3 py-1.5">
-                      <span>{allIngredients.find(x => x.id === r.ingredientId)?.name ?? r.ingredientId}</span>
-                      <span className="flex items-center gap-2"><span className="font-medium">{r.quantity}</span><button onClick={() => setRecipeRows(prev => prev.filter((_, j) => j !== i))} className="text-destructive">x</button></span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <select value={ingSel} onChange={e => setIngSel(e.target.value)} className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm"><option value="">Select ingredient...</option>{allIngredients.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
-                  <input placeholder="Qty" type="number" step="0.001" value={ingQty} onChange={e => setIngQty(e.target.value)} className="w-24 px-3 py-2 border border-border rounded-lg bg-background text-sm" />
-                  <button onClick={addRecipeRow} className="bg-accent text-white px-3 py-2 rounded-lg text-sm">Add</button>
+
+                <div className="p-3.5 bg-muted/40 border border-border rounded-xl mb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Editing Recipe For: <span className="text-foreground font-bold">{scope === 'item' ? 'Base Item' : scope === 'variant' ? variants.find(v => v.id === scopeRef)?.name : groups.flatMap(g => g.addons || []).find((a: any) => a.id === scopeRef)?.name}</span>
+                    </p>
+                    <span className="text-xs text-muted-foreground">{recipeRows.length} ingredient{recipeRows.length === 1 ? '' : 's'}</span>
+                  </div>
+
+                  <div className="space-y-1.5 mb-3">
+                    {recipeRows.map((r, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm bg-background border border-border/60 rounded-lg px-3 py-2">
+                        <span className="font-medium text-foreground">{allIngredients.find(x => x.id === r.ingredientId)?.name ?? r.ingredientId}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-bold text-accent text-xs bg-accent/10 px-2 py-0.5 rounded">{r.quantity}</span>
+                          <button
+                            onClick={() => setRecipeRows(prev => prev.filter((_, j) => j !== i))}
+                            className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors"
+                            title="Remove ingredient"
+                          >
+                            x
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {recipeRows.length === 0 && (
+                      <p className="text-xs text-muted-foreground py-3 text-center italic">
+                        No ingredients added yet for this {scope === 'item' ? 'base item' : scope === 'variant' ? 'variant' : 'add-on'}. Select an ingredient below and click Add.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <select value={ingSel} onChange={e => setIngSel(e.target.value)} className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-accent">
+                      <option value="">Select ingredient...</option>
+                      {allIngredients.map(i => <option key={i.id} value={i.id}>{i.name} ({i.base_unit})</option>)}
+                    </select>
+                    <input
+                      placeholder="Qty"
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      value={ingQty}
+                      onChange={e => setIngQty(e.target.value)}
+                      className="w-24 px-3 py-2 border border-border rounded-lg bg-background text-sm font-mono focus:outline-accent"
+                    />
+                    <button
+                      onClick={addRecipeRow}
+                      disabled={!ingSel || !(parseFloat(ingQty) > 0)}
+                      className="bg-accent text-white px-3.5 py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      Add
+                    </button>
+                  </div>
                 </div>
               </section>
 

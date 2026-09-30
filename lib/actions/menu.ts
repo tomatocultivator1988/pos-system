@@ -201,14 +201,13 @@ export async function getRecipeLines(params: {
   let query = supabase
     .from('recipe_lines')
     .select('ingredient_id, quantity_required, ingredients(name)')
-    .eq('menu_item_id', params.menuItemId)
 
   if (params.scope === 'variant') {
     query = query.eq('menu_item_variant_id', params.refId ?? '').is('addon_id', null)
   } else if (params.scope === 'addon') {
     query = query.eq('addon_id', params.refId ?? '').is('menu_item_variant_id', null)
   } else {
-    query = query.is('menu_item_variant_id', null).is('addon_id', null)
+    query = query.eq('menu_item_id', params.menuItemId).is('menu_item_variant_id', null).is('addon_id', null)
   }
 
   const { data } = await query.order('created_at')
