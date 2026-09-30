@@ -61,9 +61,9 @@ export default function MenuPage() {
   const [editingCatId, setEditingCatId] = useState<string | null>(null)
   const [editingCatName, setEditingCatName] = useState('')
 
-  const load = async () => {
+  const load = async (showSkeleton = false) => {
     try {
-      setMenuLoading(true)
+      if (showSkeleton) setMenuLoading(true)
       setMenuError(null)
       const [cats, menuItems, inactive, counts] = await Promise.all([getCategories(), getMenuItems(), getInactiveMenuItems(), getRecipeCounts()])
       setCategories(cats as Category[])
@@ -72,10 +72,10 @@ export default function MenuPage() {
     } catch (err: any) {
       setMenuError(err.message || 'Failed to load menu')
     } finally {
-      setMenuLoading(false)
+      if (showSkeleton) setMenuLoading(false)
     }
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(true) }, [])
 
   const openNew = async () => {
     if (categories.length === 0) await load()
@@ -387,7 +387,7 @@ export default function MenuPage() {
         ) : menuError ? (
           <div className="text-center py-12">
             <p className="text-destructive mb-4">{menuError}</p>
-            <button onClick={load} className="bg-accent text-white px-4 py-2 rounded-lg">Retry</button>
+            <button onClick={() => load(true)} className="bg-accent text-white px-4 py-2 rounded-lg">Retry</button>
           </div>
         ) : (
           <>
@@ -426,6 +426,8 @@ export default function MenuPage() {
             )
           })}
         </div>
+          </>
+        )}
 
         {detailOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -783,8 +785,6 @@ export default function MenuPage() {
               </div>
             </div>
           </div>
-        )}
-          </>
         )}
 
         {/* Category Management Modal */}
