@@ -234,6 +234,169 @@ export async function deleteAddon(id: string) {
   return { success: true }
 }
 
+export async function copyAddonsToMenuItems(params: {
+  sourceMenuItemId: string
+  targetMenuItemIds: string[]
+  includeRecipes: boolean
+}) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+
+  if (!params.targetMenuItemIds || params.targetMenuItemIds.length === 0) {
+    return { success: true, count: 0 }
+  }
+
+  // 1. Fetch source groups with active addons
+  const { data: rawSourceGroups, error: groupsErr } = await supabase
+    .from('addon_groups')
+    .select('*, addons(*)')
+    .eq('menu_item_id', params.sourceMenuItemId)
+    .eq('is_active', true)
+    .order('sort_order')
+
+  if (groupsErr) throw new Error(groupsErr.message)
+
+  const sourceGroups = (rawSourceGroups || []).map((g: any) => ({
+    ...g,
+    addons: (g.addons || []).filter((a: any) => a.is_active !== false),
+  })).filter((g: any) => g.addons.length > 0)
+
+  if (sourceGroups.length === 0) {
+    throw new Error('No active add-ons to copy from this item.')
+  }
+
+  // 2. Fetch recipe lines for source addons if requested
+  const sourceAddonIds = sourceGroups.flatMap((g: any) => g.addons.map((a: any) => a.id))
+  const recipeMap: Record<string, { ingredient_id: string; quantity_required: number }[]> = {}
+
+  if (params.includeRecipes && sourceAddonIds.length > 0) {
+    const { data: lines, error: linesErr } = await supabase
+      .from('recipe_lines')
+      .select('addon_id, ingredient_id, quantity_required')
+      .in('addon_id', sourceAddonIds)
+
+    if (linesErr) throw new Error(linesErr.message)
+
+    for (const r of lines || []) {
+      if (!recipeMap[r.addon_id]) recipeMap[r.addon_id] = []
+      recipeMap[r.addon_id].push({
+        ingredient_id: r.ingredient_id,
+        quantity_required: Number(r.quantity_required),
+      })
+    }
+  }
+
+  // 3. For each target item, deactivate existing addon groups and insert copied ones
+  for (const targetId of params.targetMenuItemIds) {
+    if (targetId === params.sourceMenuItemId) continue
+
+    await supabase
+      .from('addon_groups')
+      .update({ is_active: false })
+      .eq('menu_item_id', targetId)
+
+    for (const sg of sourceGroups) {
+      const { data: newGroup, error: ngErr } = await supabase
+        .from('addon_groups')
+        .insert({
+          menu_item_id: targetId,
+          name: sg.name,
+          min_selections: sg.min_selections ?? 0,
+          max_selections: sg.max_selections ?? 0,
+          is_required: sg.is_required ?? false,
+          sort_order: sg.sort_order ?? 0,
+          is_active: true,
+        })
+        .select()
+        .single()
+
+      if (ngErr || !newGroup) continue
+
+      for (const sa of sg.addons) {
+        const { data: newAddon, error: naErr } = await supabase
+          .from('addons')
+          .insert({
+            addon_group_id: newGroup.id,
+            name: sa.name,
+            price_adjustment: sa.price_adjustment ?? 0,
+            sort_order: sa.sort_order ?? 0,
+            is_active: true,
+          })
+          .select()
+          .single()
+
+        if (naErr || !newAddon) continue
+
+        const recipes = recipeMap[sa.id] || []
+        if (recipes.length > 0) {
+          await supabase
+            .from('recipe_lines')
+            .insert(recipes.map(r => ({
+              addon_id: newAddon.id,
+              ingredient_id: r.ingredient_id,
+              quantity_required: r.quantity_required,
+            })))
+        }
+      }
+    }
+  }
+
+  return { success: true, count: params.targetMenuItemIds.length }
+}
+
+export async function syncAddonRecipeToAllItems(params: {
+  addonName: string
+  lines: { ingredientId: string; quantity: number }[]
+}) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+
+  if (!params.addonName.trim()) {
+    throw new Error('Addon name is required')
+  }
+
+  // Find all active addons with the same name (case-insensitive)
+  const { data: matchingAddons, error: addErr } = await supabase
+    .from('addons')
+    .select('id, name')
+    .ilike('name', params.addonName.trim())
+    .eq('is_active', true)
+
+  if (addErr) throw new Error(addErr.message)
+  if (!matchingAddons || matchingAddons.length === 0) {
+    return { success: true, count: 0 }
+  }
+
+  const addonIds = matchingAddons.map((a: any) => a.id)
+
+  // Remove existing recipe_lines for these addons
+  const { error: delErr } = await supabase
+    .from('recipe_lines')
+    .delete()
+    .in('addon_id', addonIds)
+
+  if (delErr) throw new Error(delErr.message)
+
+  // Insert the new lines for all matching addons
+  if (params.lines && params.lines.length > 0) {
+    const toInsert = addonIds.flatMap((aid: string) =>
+      params.lines.map((l: any) => ({
+        addon_id: aid,
+        ingredient_id: l.ingredientId,
+        quantity_required: l.quantity,
+      }))
+    )
+
+    const { error: insErr } = await supabase
+      .from('recipe_lines')
+      .insert(toInsert)
+
+    if (insErr) throw new Error(insErr.message)
+  }
+
+  return { success: true, count: matchingAddons.length }
+}
+
 export async function getRecipeLines(params: {
   menuItemId: string
   scope: 'item' | 'variant' | 'addon'

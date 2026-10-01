@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import AppLayout from '@/components/app-layout'
-import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, updateVariant, deleteVariant, getAddonGroups, createAddonGroup, deleteAddonGroup, createAddon, updateAddon, deleteAddon, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
+import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, updateVariant, deleteVariant, getAddonGroups, createAddonGroup, deleteAddonGroup, createAddon, updateAddon, deleteAddon, copyAddonsToMenuItems, syncAddonRecipeToAllItems, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
 import { getIngredients } from '@/lib/actions/inventory'
-import { Plus, Pencil, Trash2, ChefHat, Tag, X, Check } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChefHat, Tag, X, Check, Copy } from 'lucide-react'
 import { useModal } from '@/lib/contexts/modal-context'
 
 interface Category { id: string; name: string; sort_order: number; is_active: boolean }
@@ -56,7 +56,14 @@ export default function MenuPage() {
   const [allIngredients, setAllIngredients] = useState<any[]>([])
   const [scopeLoading, setScopeLoading] = useState(false)
   const [recipeSavedMsg, setRecipeSavedMsg] = useState('')
+  const [syncToAllWithSameName, setSyncToAllWithSameName] = useState(false)
 
+  const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([])
+  const [copyIncludeRecipes, setCopyIncludeRecipes] = useState(true)
+  const [copyCatFilter, setCopyCatFilter] = useState('all')
+  const [copySearch, setCopySearch] = useState('')
+  const [copying, setCopying] = useState(false)
   const [menuLoading, setMenuLoading] = useState(true)
   const [menuError, setMenuError] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(false)
@@ -501,13 +508,62 @@ export default function MenuPage() {
         lines: recipeRows.map(r => ({ ingredientId: r.ingredientId, quantity: parseFloat(r.quantity) || 0 })),
       })
       const targetLabel = scope === 'item' ? 'Base Item' : scope === 'variant' ? (variants.find(v => v.id === scopeRef)?.name || 'Variant') : 'Add-on'
-      setRecipeSavedMsg(`✓ Recipe for "${targetLabel}" saved successfully! (${recipeRows.length} ingredient${recipeRows.length === 1 ? '' : 's'})`)
-      setTimeout(() => setRecipeSavedMsg(''), 4000)
+
+      let syncMsg = ''
+      if (scope === 'addon' && syncToAllWithSameName) {
+        const addonName = groups.flatMap(g => g.addons || []).find((a: any) => a.id === scopeRef)?.name
+        if (addonName) {
+          const res = await syncAddonRecipeToAllItems({
+            addonName,
+            lines: recipeRows.map(r => ({ ingredientId: r.ingredientId, quantity: parseFloat(r.quantity) || 0 })),
+          })
+          if (res.count > 1) {
+            syncMsg = ` & synced to ${res.count} items with "${addonName}"`
+          }
+        }
+      }
+
+      setRecipeSavedMsg(`✓ Recipe for "${targetLabel}" saved successfully${syncMsg}! (${recipeRows.length} ingredient${recipeRows.length === 1 ? '' : 's'})`)
+      setTimeout(() => setRecipeSavedMsg(''), 5000)
       await load()
     } catch (err: any) {
       showConfirmation({ title: 'Error', description: err.message || 'Failed to save recipe', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
     } finally {
       setScopeLoading(false)
+    }
+  }
+
+  const handleCopyAddons = async () => {
+    if (!recipeItem || selectedTargetIds.length === 0) return
+    setCopying(true)
+    try {
+      const res = await copyAddonsToMenuItems({
+        sourceMenuItemId: recipeItem.id,
+        targetMenuItemIds: selectedTargetIds,
+        includeRecipes: copyIncludeRecipes,
+      })
+      setCopyModalOpen(false)
+      setSelectedTargetIds([])
+      showConfirmation({
+        title: 'Add-ons Copied Successfully!',
+        description: `Applied ${groups.length} add-on group(s) ${copyIncludeRecipes ? 'and their recipes ' : ''}to ${res.count} item(s).`,
+        confirmText: 'Great!',
+        cancelText: '',
+        onConfirm: () => hideConfirmation(),
+        isDestructive: false,
+      })
+      await load()
+    } catch (err: any) {
+      showConfirmation({
+        title: 'Copy Failed',
+        description: err.message || 'Failed to copy add-ons to selected items.',
+        confirmText: 'OK',
+        cancelText: '',
+        onConfirm: () => hideConfirmation(),
+        isDestructive: false,
+      })
+    } finally {
+      setCopying(false)
     }
   }
 
@@ -775,7 +831,25 @@ export default function MenuPage() {
               </section>
 
               <section className="mb-6">
-                <h3 className="font-medium mb-1">Add-on Groups (Extras, Syrups, Milk Options)</h3>
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="font-medium">Add-on Groups (Extras, Syrups, Milk Options)</h3>
+                  {groups.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTargetIds([])
+                        setCopySearch('')
+                        setCopyCatFilter('all')
+                        setCopyModalOpen(true)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white hover:opacity-90 transition-all shadow-xs"
+                      title="Copy these add-ons and recipes to other items"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Apply to Other Drinks
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground mb-3">Group optional choices for this item (e.g. Milk Options, Syrups, Extras) with price adjustments.</p>
                 <div className="flex gap-2 mb-3">
                   <input
@@ -1088,9 +1162,192 @@ export default function MenuPage() {
                 </div>
               </section>
 
+              {scope === 'addon' && (
+                <div className="mb-4 p-3 rounded-xl bg-accent/5 border border-accent/20">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs font-medium text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={syncToAllWithSameName}
+                      onChange={e => setSyncToAllWithSameName(e.target.checked)}
+                      className="rounded text-accent focus:ring-accent w-4 h-4 cursor-pointer"
+                    />
+                    <span>
+                      Also sync/update this recipe across all other drinks with &quot;
+                      <strong className="text-accent">{groups.flatMap(g => g.addons || []).find((a: any) => a.id === scopeRef)?.name || 'this add-on'}</strong>
+                      &quot;
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2">
                 <button onClick={() => setRecipeOpen(false)} className="px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/80">Close</button>
                 <button onClick={saveRecipe} disabled={scopeLoading} className="px-4 py-2 rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-50">Save Recipe</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Copy Add-ons to Other Items Modal */}
+        {copyModalOpen && recipeItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in">
+            <div className="bg-card border border-border rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col p-6 shadow-xl">
+              <div className="flex items-center justify-between pb-3 border-b border-border mb-4">
+                <div>
+                  <h2 className="text-lg font-bold flex items-center gap-2">
+                    <Copy className="w-5 h-5 text-accent" />
+                    Copy Add-ons to Other Drinks
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Source: <strong className="text-foreground">{recipeItem.name}</strong> ({groups.length} group{groups.length === 1 ? '' : 's'}, {groups.reduce((s, g) => s + (g.addons || []).length, 0)} option{groups.reduce((s, g) => s + (g.addons || []).length, 0) === 1 ? '' : 's'})
+                  </p>
+                </div>
+                <button
+                  onClick={() => setCopyModalOpen(false)}
+                  disabled={copying}
+                  className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Source Groups Preview */}
+              <div className="p-3 rounded-xl bg-muted/40 border border-border mb-4 text-xs space-y-1">
+                <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">Add-on Groups to Copy:</p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {groups.map(g => (
+                    <span key={g.id} className="px-2 py-0.5 rounded-full bg-background border border-border text-[11px] font-medium">
+                      {g.name}: {(g.addons || []).map((a: any) => a.name).join(', ') || 'No options'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category Filter Chips & Search */}
+              <div className="space-y-2 mb-3">
+                <div className="flex items-center justify-between gap-2">
+                  <input
+                    placeholder="Search menu items..."
+                    value={copySearch}
+                    onChange={e => setCopySearch(e.target.value)}
+                    className="flex-1 px-3 py-1.5 border border-border rounded-lg bg-background text-xs focus:outline-accent"
+                  />
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetable = items.filter(i => i.id !== recipeItem.id && i.is_active && (copyCatFilter === 'all' || i.category_id === copyCatFilter) && (!copySearch.trim() || i.name.toLowerCase().includes(copySearch.toLowerCase())))
+                        setSelectedTargetIds(Array.from(new Set([...selectedTargetIds, ...targetable.map(i => i.id)])))
+                      }}
+                      className="px-2.5 py-1 text-xs font-medium rounded-lg bg-muted text-foreground hover:bg-muted/80"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTargetIds([])}
+                      className="px-2.5 py-1 text-xs font-medium rounded-lg bg-muted text-foreground hover:bg-muted/80"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  <button
+                    onClick={() => setCopyCatFilter('all')}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium shrink-0 transition-colors ${
+                      copyCatFilter === 'all' ? 'bg-accent text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    All Categories
+                  </button>
+                  {categories.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => setCopyCatFilter(c.id)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium shrink-0 transition-colors ${
+                        copyCatFilter === c.id ? 'bg-accent text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="flex-1 overflow-y-auto min-h-[160px] max-h-[240px] border border-border rounded-xl p-2 space-y-1 bg-background">
+                {items
+                  .filter(i => i.id !== recipeItem.id && i.is_active)
+                  .filter(i => copyCatFilter === 'all' || i.category_id === copyCatFilter)
+                  .filter(i => !copySearch.trim() || i.name.toLowerCase().includes(copySearch.toLowerCase()))
+                  .map(targetItem => {
+                    const isSelected = selectedTargetIds.includes(targetItem.id)
+                    const catName = categories.find(c => c.id === targetItem.category_id)?.name || ''
+                    return (
+                      <label
+                        key={targetItem.id}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${
+                          isSelected ? 'bg-accent/10 border border-accent/30' : 'hover:bg-muted/60 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setSelectedTargetIds(prev => [...prev, targetItem.id])
+                              } else {
+                                setSelectedTargetIds(prev => prev.filter(id => id !== targetItem.id))
+                              }
+                            }}
+                            className="rounded text-accent focus:ring-accent"
+                          />
+                          <span className="font-semibold text-foreground">{targetItem.name}</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground font-medium">{catName}</span>
+                      </label>
+                    )
+                  })}
+              </div>
+
+              {/* Options & Action Footer */}
+              <div className="pt-3 border-t border-border mt-3 space-y-2.5">
+                <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={copyIncludeRecipes}
+                    onChange={e => setCopyIncludeRecipes(e.target.checked)}
+                    className="rounded text-accent focus:ring-accent"
+                  />
+                  <span>Include inventory recipe ingredients for each add-on option</span>
+                </label>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {selectedTargetIds.length} item{selectedTargetIds.length === 1 ? '' : 's'} selected
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCopyModalOpen(false)}
+                      disabled={copying}
+                      className="px-4 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/80 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyAddons}
+                      disabled={copying || selectedTargetIds.length === 0}
+                      className="px-4 py-2 rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-50 text-xs font-semibold shadow-xs"
+                    >
+                      {copying ? 'Applying to Drinks...' : `Apply to ${selectedTargetIds.length} Selected Item${selectedTargetIds.length === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
