@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import AppLayout from '@/components/app-layout'
-import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, updateVariant, deleteVariant, getAddonGroups, createAddonGroup, deleteAddonGroup, createAddon, updateAddon, deleteAddon, copyAddonsToMenuItems, syncAddonRecipeToAllItems, getRecipeLines, getRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
+import { getCategories, getMenuItems, getInactiveMenuItems, createMenuItem, updateMenuItem, getVariants, createVariant, updateVariant, deleteVariant, getAddonGroups, createAddonGroup, deleteAddonGroup, createAddon, updateAddon, deleteAddon, copyAddonsToMenuItems, syncAddonRecipeToAllItems, getRecipeLines, getRecipeCounts, getItemRecipeSummary, MenuItemRecipeCounts, upsertRecipeLines, uploadMenuImage, deleteMenuImage, createCategory, updateCategory, deleteCategory } from '@/lib/actions/menu'
 import { getIngredients } from '@/lib/actions/inventory'
 import { Plus, Pencil, Trash2, ChefHat, Tag, X, Check, Copy } from 'lucide-react'
 import { useModal } from '@/lib/contexts/modal-context'
 
 interface Category { id: string; name: string; sort_order: number; is_active: boolean }
 interface Variant { id: string; menu_item_id: string; name: string; price_mode: string; price_override?: number; price_adjustment?: number; is_default: boolean; is_active: boolean }
-interface MenuItem { id: string; category_id: string; name: string; description: string; base_price: number; loyalty_points_earned: number; image_url?: string; is_active: boolean; send_to_kds: boolean; sort_order: number; menu_item_variants: Variant[]; recipe_count?: number }
+interface MenuItem { id: string; category_id: string; name: string; description: string; base_price: number; loyalty_points_earned: number; image_url?: string; is_active: boolean; send_to_kds: boolean; sort_order: number; menu_item_variants: Variant[]; recipe_count?: number; recipe_counts?: MenuItemRecipeCounts }
 
 export default function MenuPage() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -57,6 +57,11 @@ export default function MenuPage() {
   const [scopeLoading, setScopeLoading] = useState(false)
   const [recipeSavedMsg, setRecipeSavedMsg] = useState('')
   const [syncToAllWithSameName, setSyncToAllWithSameName] = useState(false)
+  const [recipeSummary, setRecipeSummary] = useState<{
+    baseCount: number
+    variantCounts: Record<string, number>
+    addonCounts: Record<string, number>
+  }>({ baseCount: 0, variantCounts: {}, addonCounts: {} })
 
   const [copyModalOpen, setCopyModalOpen] = useState(false)
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([])
@@ -80,7 +85,11 @@ export default function MenuPage() {
       const [cats, menuItems, inactive, counts] = await Promise.all([getCategories(), getMenuItems(), getInactiveMenuItems(), getRecipeCounts()])
       setCategories(cats as Category[])
       const items = [...(menuItems as MenuItem[]), ...(inactive as MenuItem[])]
-      setItems(items.map((it) => ({ ...it, recipe_count: counts[it.id] || 0 })))
+      setItems(items.map((it) => ({
+        ...it,
+        recipe_count: counts[it.id]?.total ?? 0,
+        recipe_counts: counts[it.id] ?? { base: 0, variant: 0, addon: 0, total: 0 },
+      })))
     } catch (err: any) {
       setMenuError(err.message || 'Failed to load menu')
     } finally {
@@ -215,10 +224,16 @@ export default function MenuPage() {
   const openRecipe = async (it: MenuItem) => {
     setRecipeItem(it); setRecipeOpen(true)
     setRecipeSavedMsg('')
-    const [vs, gs, ings] = await Promise.all([getVariants(it.id), getAddonGroups(it.id), getIngredients()])
+    const [vs, gs, ings, summary] = await Promise.all([
+      getVariants(it.id),
+      getAddonGroups(it.id),
+      getIngredients(),
+      getItemRecipeSummary(it.id),
+    ])
     setVariants(vs as any[])
     setGroups(gs as any[])
     setAllIngredients(ings as any[])
+    setRecipeSummary(summary)
     setScope('item'); setScopeRef('')
     const rl = await getRecipeLines({ menuItemId: it.id, scope: 'item' })
     setRecipeRows(rl.map((r: any) => ({ ingredientId: r.ingredient_id, quantity: String(r.quantity_required) })))
@@ -332,6 +347,7 @@ export default function MenuPage() {
       ))
       setAddonNames(prev => ({ ...prev, [group.id]: '' }))
       setAddonPrices(prev => ({ ...prev, [group.id]: '' }))
+      selectRecipeScope('addon', addon.id)
     } catch (err: any) {
       showConfirmation({ title: 'Error', description: `"${name}" already exists in this group.`, confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
     }
@@ -525,6 +541,8 @@ export default function MenuPage() {
 
       setRecipeSavedMsg(`✓ Recipe for "${targetLabel}" saved successfully${syncMsg}! (${recipeRows.length} ingredient${recipeRows.length === 1 ? '' : 's'})`)
       setTimeout(() => setRecipeSavedMsg(''), 5000)
+      const updatedSummary = await getItemRecipeSummary(recipeItem.id)
+      setRecipeSummary(updatedSummary)
       await load()
     } catch (err: any) {
       showConfirmation({ title: 'Error', description: err.message || 'Failed to save recipe', confirmText: 'OK', cancelText: '', onConfirm: () => hideConfirmation(), isDestructive: false })
@@ -565,6 +583,21 @@ export default function MenuPage() {
     } finally {
       setCopying(false)
     }
+  }
+
+  const renderRecipeSummaryBadge = (rc?: MenuItemRecipeCounts) => {
+    if (!rc || rc.total === 0) {
+      return <span className="text-muted-foreground/60 italic text-xs">0 ing</span>
+    }
+    const parts: string[] = []
+    if (rc.base > 0) parts.push(`${rc.base} base`)
+    if (rc.variant > 0) parts.push(`${rc.variant} var`)
+    if (rc.addon > 0) parts.push(`${rc.addon} add-on${rc.addon > 1 ? 's' : ''}`)
+    return (
+      <span className="font-semibold text-foreground text-xs">
+        {parts.join(' • ')}
+      </span>
+    )
   }
 
   const filtered = (activeCategory ? items.filter(i => i.category_id === activeCategory) : items).filter(i => showInactive || i.is_active)
@@ -619,7 +652,7 @@ export default function MenuPage() {
                 <div className="space-y-1 mb-3 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Price:</span><span className="font-medium">₱{Number(price || 0).toFixed(2)}</span></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Variants:</span><span>{item.menu_item_variants?.length || 1}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Recipe:</span><span>{item.recipe_count ?? 0} ing</span></div>
+                  <div className="flex justify-between items-center"><span className="text-muted-foreground">Recipe:</span>{renderRecipeSummaryBadge(item.recipe_counts)}</div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => openRecipe(item)} className="flex-1 bg-muted text-foreground py-2 rounded-lg hover:bg-muted/80 flex items-center justify-center gap-2 text-sm font-medium"><ChefHat className="w-4 h-4" /> Recipe</button>
@@ -832,28 +865,29 @@ export default function MenuPage() {
 
               <section className="mb-6">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-medium">Add-on Groups (Extras, Syrups, Milk Options)</h3>
+                  <h3 className="font-medium">Add-on Groups (Sauces, Extras, Syrups, Milk Options)</h3>
                   {groups.length > 0 && (
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedTargetIds([])
                         setCopySearch('')
-                        setCopyCatFilter('all')
+                        setCopyCatFilter(recipeItem?.category_id || 'all')
+                        setCopyIncludeRecipes(true)
                         setCopyModalOpen(true)
                       }}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white hover:opacity-90 transition-all shadow-xs"
-                      title="Copy these add-ons and recipes to other items"
+                      title="Copy these add-ons and recipes to other menu items"
                     >
                       <Copy className="w-3.5 h-3.5" />
-                      Apply to Other Drinks
+                      Apply Add-ons to Other Items
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">Group optional choices for this item (e.g. Milk Options, Syrups, Extras) with price adjustments.</p>
+                <p className="text-xs text-muted-foreground mb-3">Group optional choices for this item (e.g. Sauces, Milk Options, Syrups, Extras) with price adjustments.</p>
                 <div className="flex gap-2 mb-3">
                   <input
-                    placeholder="New Group Name (e.g. Milk Options, Syrups)"
+                    placeholder="New Group Name (e.g. Sauce Options, Syrups)"
                     value={gName}
                     onChange={e => setGName(e.target.value)}
                     className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm"
@@ -947,7 +981,40 @@ export default function MenuPage() {
                                     +₱{Number(a.price_adjustment || 0).toFixed(2)}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-1 shrink-0">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {(() => {
+                                    const cnt = recipeSummary.addonCounts[a.id] || 0
+                                    const isCurrent = scope === 'addon' && scopeRef === a.id
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          selectRecipeScope('addon', a.id)
+                                          document.getElementById('inventory-recipe-section')?.scrollIntoView({ behavior: 'smooth' })
+                                        }}
+                                        className={`px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all ${
+                                          isCurrent
+                                            ? 'bg-accent text-white shadow-xs'
+                                            : cnt > 0
+                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                                            : 'bg-muted text-muted-foreground hover:bg-muted/80 border border-border/50'
+                                        }`}
+                                        title="Click to view or edit this add-on's inventory recipe"
+                                      >
+                                        {cnt > 0 ? (
+                                          <>
+                                            <Check className="w-3 h-3 text-emerald-600" />
+                                            <span>{cnt} ing</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Plus className="w-3 h-3" />
+                                            <span>Add Recipe</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    )
+                                  })()}
                                   <button
                                     onClick={() => startEditAddon(a)}
                                     className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -1012,7 +1079,7 @@ export default function MenuPage() {
                 </div>
               </section>
 
-              <section className="mb-6">
+              <section id="inventory-recipe-section" className="mb-6">
                 <h3 className="font-medium">Inventory Recipe</h3>
                 <p className="text-xs text-muted-foreground mt-1 mb-3">Choose what you are setting up, then add only the ingredients it uses.</p>
 
@@ -1028,11 +1095,16 @@ export default function MenuPage() {
                     <button
                       onClick={() => selectRecipeScope('item')}
                       disabled={scopeLoading}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
                         scope === 'item' ? 'bg-accent text-white shadow-xs' : 'bg-muted text-foreground hover:bg-muted/80'
                       } disabled:opacity-50`}
                     >
-                      Base Item
+                      <span>Base Item</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                        scope === 'item' ? 'bg-white/20 text-white' : recipeSummary.baseCount > 0 ? 'bg-muted-foreground/15 text-foreground font-semibold' : 'text-muted-foreground'
+                      }`}>
+                        {recipeSummary.baseCount > 0 ? `${recipeSummary.baseCount} ing` : '0 ing'}
+                      </span>
                     </button>
                   </div>
 
@@ -1040,20 +1112,31 @@ export default function MenuPage() {
                     <div>
                       <p className="text-xs font-medium text-muted-foreground mb-1.5">VARIANT RECIPES</p>
                       <div className="flex gap-2 flex-wrap">
-                        {variants.map(v => (
-                          <button
-                            key={v.id}
-                            onClick={() => selectRecipeScope('variant', v.id)}
-                            disabled={scopeLoading}
-                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                              scope === 'variant' && scopeRef === v.id
-                                ? 'bg-accent text-white shadow-xs ring-2 ring-accent/30'
-                                : 'bg-muted text-foreground hover:bg-muted/80'
-                            } disabled:opacity-50`}
-                          >
-                            {v.name}
-                          </button>
-                        ))}
+                        {variants.map(v => {
+                          const cnt = recipeSummary.variantCounts[v.id] || 0
+                          const isSelected = scope === 'variant' && scopeRef === v.id
+                          return (
+                            <button
+                              key={v.id}
+                              onClick={() => selectRecipeScope('variant', v.id)}
+                              disabled={scopeLoading}
+                              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                isSelected
+                                  ? 'bg-accent text-white shadow-xs ring-2 ring-accent/30'
+                                  : cnt > 0
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
+                                  : 'bg-muted text-foreground hover:bg-muted/80'
+                              } disabled:opacity-50`}
+                            >
+                              <span>{v.name}</span>
+                              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                                isSelected ? 'bg-white/20 text-white' : cnt > 0 ? 'bg-emerald-200/60 text-emerald-900 font-bold' : 'text-muted-foreground'
+                              }`}>
+                                {cnt > 0 ? `${cnt} ing ✓` : '0 ing'}
+                              </span>
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -1066,20 +1149,31 @@ export default function MenuPage() {
                           <div key={g.id}>
                             <p className="text-xs text-muted-foreground mb-1">{g.name}</p>
                             <div className="flex gap-2 flex-wrap">
-                              {(g.addons || []).map((a: any) => (
-                                <button
-                                  key={a.id}
-                                  onClick={() => selectRecipeScope('addon', a.id)}
-                                  disabled={scopeLoading}
-                                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                                    scope === 'addon' && scopeRef === a.id
-                                      ? 'bg-accent text-white shadow-xs ring-2 ring-accent/30'
-                                      : 'bg-muted text-foreground hover:bg-muted/80'
-                                  } disabled:opacity-50`}
-                                >
-                                  {a.name}
-                                </button>
-                              ))}
+                              {(g.addons || []).map((a: any) => {
+                                const cnt = recipeSummary.addonCounts[a.id] || 0
+                                const isSelected = scope === 'addon' && scopeRef === a.id
+                                return (
+                                  <button
+                                    key={a.id}
+                                    onClick={() => selectRecipeScope('addon', a.id)}
+                                    disabled={scopeLoading}
+                                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                      isSelected
+                                        ? 'bg-accent text-white shadow-xs ring-2 ring-accent/30'
+                                        : cnt > 0
+                                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
+                                        : 'bg-muted text-foreground hover:bg-muted/80'
+                                    } disabled:opacity-50`}
+                                  >
+                                    <span>{a.name}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                                      isSelected ? 'bg-white/20 text-white' : cnt > 0 ? 'bg-emerald-200/60 text-emerald-900 font-bold' : 'text-muted-foreground'
+                                    }`}>
+                                      {cnt > 0 ? `${cnt} ing ✓` : '0 ing'}
+                                    </span>
+                                  </button>
+                                )
+                              })}
                             </div>
                           </div>
                         ))}
@@ -1172,7 +1266,7 @@ export default function MenuPage() {
                       className="rounded text-accent focus:ring-accent w-4 h-4 cursor-pointer"
                     />
                     <span>
-                      Also sync/update this recipe across all other drinks with &quot;
+                      Also sync/update this recipe across all other menu items with &quot;
                       <strong className="text-accent">{groups.flatMap(g => g.addons || []).find((a: any) => a.id === scopeRef)?.name || 'this add-on'}</strong>
                       &quot;
                     </span>
@@ -1196,7 +1290,7 @@ export default function MenuPage() {
                 <div>
                   <h2 className="text-lg font-bold flex items-center gap-2">
                     <Copy className="w-5 h-5 text-accent" />
-                    Copy Add-ons to Other Drinks
+                    Copy Add-ons to Other Menu Items
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Source: <strong className="text-foreground">{recipeItem.name}</strong> ({groups.length} group{groups.length === 1 ? '' : 's'}, {groups.reduce((s, g) => s + (g.addons || []).length, 0)} option{groups.reduce((s, g) => s + (g.addons || []).length, 0) === 1 ? '' : 's'})
@@ -1344,7 +1438,7 @@ export default function MenuPage() {
                       disabled={copying || selectedTargetIds.length === 0}
                       className="px-4 py-2 rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-50 text-xs font-semibold shadow-xs"
                     >
-                      {copying ? 'Applying to Drinks...' : `Apply to ${selectedTargetIds.length} Selected Item${selectedTargetIds.length === 1 ? '' : 's'}`}
+                      {copying ? 'Applying to Items...' : `Apply to ${selectedTargetIds.length} Selected Item${selectedTargetIds.length === 1 ? '' : 's'}`}
                     </button>
                   </div>
                 </div>

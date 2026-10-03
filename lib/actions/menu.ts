@@ -424,19 +424,77 @@ export async function getRecipeLines(params: {
   }))
 }
 
-export async function getRecipeCounts() {
+export type MenuItemRecipeCounts = {
+  base: number
+  variant: number
+  addon: number
+  total: number
+}
+
+export async function getRecipeCounts(): Promise<Record<string, MenuItemRecipeCounts>> {
   await requireRole(['admin'])()
   const supabase = await createClient()
   const { data } = await supabase
     .from('recipe_lines')
-    .select('menu_item_id')
-    .is('menu_item_variant_id', null)
-    .is('addon_id', null)
-  const counts: Record<string, number> = {}
-  for (const r of data ?? []) {
-    counts[r.menu_item_id] = (counts[r.menu_item_id] || 0) + 1
+    .select('menu_item_id, menu_item_variant_id, addon_id, menu_item_variants(menu_item_id), addons(addon_groups(menu_item_id))')
+
+  const counts: Record<string, MenuItemRecipeCounts> = {}
+  for (const r of (data as any[]) ?? []) {
+    let itemId = r.menu_item_id
+    let type: 'base' | 'variant' | 'addon' = 'base'
+    if (r.menu_item_variant_id) {
+      itemId = r.menu_item_variants?.menu_item_id
+      type = 'variant'
+    } else if (r.addon_id) {
+      itemId = r.addons?.addon_groups?.menu_item_id
+      type = 'addon'
+    }
+    if (!itemId) continue
+    if (!counts[itemId]) counts[itemId] = { base: 0, variant: 0, addon: 0, total: 0 }
+    counts[itemId][type]++
+    counts[itemId].total++
   }
   return counts
+}
+
+export async function getItemRecipeSummary(menuItemId: string) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+
+  const [{ data: vs }, { data: groups }] = await Promise.all([
+    supabase.from('menu_item_variants').select('id').eq('menu_item_id', menuItemId),
+    supabase.from('addon_groups').select('id, addons(id)').eq('menu_item_id', menuItemId).eq('is_active', true),
+  ])
+
+  const variantIds = (vs || []).map((v: any) => v.id)
+  const addonIds = (groups || []).flatMap((g: any) => g.addons || []).map((a: any) => a.id)
+
+  const orClauses = [`menu_item_id.eq.${menuItemId}`]
+  if (variantIds.length > 0) orClauses.push(`menu_item_variant_id.in.(${variantIds.join(',')})`)
+  if (addonIds.length > 0) orClauses.push(`addon_id.in.(${addonIds.join(',')})`)
+
+  const { data: lines } = await supabase
+    .from('recipe_lines')
+    .select('ingredient_id, menu_item_id, menu_item_variant_id, addon_id')
+    .or(orClauses.join(','))
+
+  const baseCount = (lines || []).filter((l: any) => l.menu_item_id === menuItemId && !l.menu_item_variant_id && !l.addon_id).length
+  const variantCounts: Record<string, number> = {}
+  const addonCounts: Record<string, number> = {}
+
+  for (const l of (lines as any[]) || []) {
+    if (l.menu_item_variant_id) {
+      variantCounts[l.menu_item_variant_id] = (variantCounts[l.menu_item_variant_id] || 0) + 1
+    } else if (l.addon_id) {
+      addonCounts[l.addon_id] = (addonCounts[l.addon_id] || 0) + 1
+    }
+  }
+
+  return {
+    baseCount,
+    variantCounts,
+    addonCounts,
+  }
 }
 
 export async function upsertRecipeLines(params: {
