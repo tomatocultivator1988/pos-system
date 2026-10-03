@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     const { data: sales, count, error } = await supabase
       .from('orders')
       .select(`
-        id, order_number, grand_total, subtotal, discount_total, discount_type, tax_total, payment_method, status, payment_status, created_at,
+        id, order_number, table_number, grand_total, subtotal, discount_total, discount_type, tax_total, payment_method, status, payment_status, created_at,
         order_items(id, item_name, variant_name, unit_price, quantity, line_total, order_item_addons(id, addon_name, unit_price, quantity))
       `, { count: 'exact' })
       .order('created_at', { ascending: false })

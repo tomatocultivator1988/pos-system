@@ -3,16 +3,32 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth/session'
 
-export async function getCustomers(search?: string) {
+export async function getCustomers(options?: string | { search?: string; showInactive?: boolean }) {
   await requireRole(['admin', 'cashier'])()
   const supabase = await createClient()
+
+  let search: string | undefined
+  let showInactive = false
+
+  if (typeof options === 'string') {
+    search = options
+  } else if (options && typeof options === 'object') {
+    search = options.search
+    showInactive = !!options.showInactive
+  }
+
   let query = supabase
-    .from('customers')
+    .from('customer_crm_view')
     .select('*')
-    .eq('is_active', true)
     .order('name')
-  if (search) {
-    query = query.or(`name.ilike.%${search}%,mobile_number.ilike.%${search}%`)
+
+  if (!showInactive) {
+    query = query.eq('is_active', true)
+  }
+
+  if (search && search.trim()) {
+    const s = search.trim()
+    query = query.or(`name.ilike.%${s}%,mobile_number.ilike.%${s}%,member_number.ilike.%${s}%`)
   }
   const { data } = await query
   return data ?? []
@@ -60,11 +76,97 @@ export async function createCustomer(data: {
   throw new Error('Could not allocate a member number — please try again')
 }
 
+export async function updateCustomer(
+  id: string,
+  data: { name: string; mobile_number?: string; email?: string }
+) {
+  await requireRole(['admin', 'cashier'])()
+  const supabase = await createClient()
+
+  const name = data.name?.trim()
+  if (!name) {
+    throw new Error('Customer name is required')
+  }
+
+  const mobile_number = data.mobile_number?.trim() || null
+  const email = data.email?.trim() || null
+
+  if (mobile_number) {
+    const { data: existing } = await supabase
+      .from('customers')
+      .select('id, name')
+      .eq('mobile_number', mobile_number)
+      .neq('id', id)
+      .maybeSingle()
+
+    if (existing) {
+      throw new Error(`Mobile number is already registered to ${existing.name}`)
+    }
+  }
+
+  const { data: result, error } = await supabase
+    .from('customers')
+    .update({
+      name,
+      mobile_number,
+      email,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique') || error.message.includes('duplicate')) {
+      throw new Error('Mobile number is already in use by another customer')
+    }
+    throw new Error(error.message)
+  }
+
+  return result
+}
+
+export async function deleteCustomer(id: string) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+
+  const { data: result, error } = await supabase
+    .from('customers')
+    .update({
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  return result
+}
+
+export async function reactivateCustomer(id: string) {
+  await requireRole(['admin'])()
+  const supabase = await createClient()
+
+  const { data: result, error } = await supabase
+    .from('customers')
+    .update({
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  return result
+}
+
 export async function getCustomer(id: string) {
   await requireRole(['admin', 'cashier'])()
   const supabase = await createClient()
   const { data } = await supabase
-    .from('customers')
+    .from('customer_crm_view')
     .select('*')
     .eq('id', id)
     .single()

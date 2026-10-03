@@ -115,8 +115,13 @@ export default function SalesPage() {
                   const voidTip = !canVoid ? (isVoided ? 'Already voided' : isRefunded ? 'Already refunded' : 'Only new/preparing can be voided (before kitchen finishes)') : 'Cancel before preparation — refunds money, restores stock if new'
                   const refundTip = !canRefund ? (isVoided ? 'Voided order cannot be refunded' : isRefunded ? 'Already refunded' : 'Only ready/completed can be refunded (after kitchen)') : 'Return money after completion — always restores stock'
                   return (
-                  <tr key={sale.id} className={`border-b border-border hover:bg-muted/50 transition-colors ${isVoided ? 'bg-red-50/50' : isRefunded ? 'bg-yellow-50/50' : ''}`}>
-                    <td className="px-6 py-4 text-sm font-medium">{sale.order_number} {isVoided && <span className="ml-2 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold">VOIDED</span>}{isRefunded && <span className="ml-2 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">REFUNDED</span>}</td>
+                    <tr key={sale.id} className={`border-b border-border hover:bg-muted/50 transition-colors ${isVoided ? 'bg-red-50/50' : isRefunded ? 'bg-yellow-50/50' : ''}`}>
+                      <td className="px-6 py-4 text-sm font-medium">
+                        {sale.order_number}
+                        {sale.table_number && <span className="ml-2 px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-semibold">T-{sale.table_number}</span>}
+                        {isVoided && <span className="ml-2 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold">VOIDED</span>}
+                        {isRefunded && <span className="ml-2 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">REFUNDED</span>}
+                      </td>
                     <td className="px-6 py-4 text-sm">{formatDate(sale.created_at)}</td>
                     <td className="px-6 py-4 text-sm">{sale.order_items?.length || 0}</td>
                     <td className="px-6 py-4 text-sm text-right">{parseFloat(sale.discount_total) > 0 ? <span className="text-red-500">-₱{parseFloat(sale.discount_total).toFixed(2)}{sale.discount_type === 'employee' ? ' (Emp)' : ' (SC/PWD)'}</span> : '—'}</td>
@@ -188,7 +193,8 @@ export default function SalesPage() {
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mt-1">This is not an official receipt</p>
                 <p className="text-xs text-gray-500 mt-1">{formatDate(selectedSale.created_at)}</p>
                 <p className="text-lg font-semibold mt-2 text-gray-800">{selectedSale.order_number}</p>
-                {selectedSale.payment_status && <p className="text-xs text-gray-500 capitalize">{selectedSale.payment_status}</p>}
+                {selectedSale.table_number && <p className="text-xs font-semibold text-amber-700 bg-amber-50 rounded py-0.5 mt-1 inline-block px-2">Table: {selectedSale.table_number}</p>}
+                {selectedSale.payment_status && <p className="text-xs text-gray-500 capitalize mt-1">{selectedSale.payment_status}</p>}
               </div>
 
               <div className="space-y-2 mb-4 pb-4 border-b border-dashed border-gray-300">

@@ -30,7 +30,7 @@ export async function GET() {
     const { data: orders } = await supabase
       .from('orders')
       .select(`
-        id, order_number, status, created_at, notes,
+        id, order_number, status, created_at, notes, table_number,
         order_items(id, item_name, variant_name, quantity, notes, send_to_kds, order_item_addons(id, addon_name, quantity))
       `)
       .in('status', ['new', 'preparing', 'ready'])

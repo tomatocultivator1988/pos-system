@@ -41,9 +41,10 @@ export default function POSPage() {
     orderNumber: string; total: number; paymentMethod: string; loyaltyPoints: number
     items: CartItem[]; customerName?: string; subtotal: number; tax: number; date: string
     amountTendered?: number; change?: number; loyaltyBalance?: number | null
-    discount?: number; discountLabel?: string
+    discount?: number; discountLabel?: string; tableNumber?: string | null
   } | null>(null)
   const [amountTendered, setAmountTendered] = useState('')
+  const [tableNumber, setTableNumber] = useState('')
 
   const { items, addItem, removeItem, updateQuantity, clearCart, getSubtotal, getItemKey } = useCart()
   const { showConfirmation, showLoading, hideLoading, hideConfirmation } = useModal()
@@ -270,6 +271,7 @@ export default function POSPage() {
     footer: 'Thank you for your purchase!',
     points: rc?.loyaltyPoints ?? 0,
     pointsBalance: rc?.loyaltyBalance ?? undefined,
+    tableNumber: rc?.tableNumber ?? undefined,
   })
 
   const printCurrentReceipt = async () => {
@@ -320,7 +322,7 @@ export default function POSPage() {
 
     showConfirmation({
       title: 'Complete Sale',
-      description: `Total: ₱${finalTotal.toFixed(2)}${getDiscount() > 0 ? ` (less ${discountLabel} -₱${getDiscount().toFixed(2)})` : ''}${taxRate > 0 ? ` (incl. ${taxRate}% tax)` : ''} | Payment: ${paymentMethod.toUpperCase()}${selectedCustomer ? `\nCustomer: ${selectedCustomer.name}` : ''}${changeDesc}`,
+      description: `Total: ₱${finalTotal.toFixed(2)}${getDiscount() > 0 ? ` (less ${discountLabel} -₱${getDiscount().toFixed(2)})` : ''}${taxRate > 0 ? ` (incl. ${taxRate}% tax)` : ''} | Payment: ${paymentMethod.toUpperCase()}${tableNumber.trim() ? `\nTable: ${tableNumber.trim()}` : ''}${selectedCustomer ? `\nCustomer: ${selectedCustomer.name}` : ''}${changeDesc}`,
       confirmText: 'Yes, Complete',
       cancelText: 'Cancel',
       onConfirm: async () => {
@@ -329,6 +331,7 @@ export default function POSPage() {
         showLoading('Processing transaction...')
         const capturedTendered = amountTendered
         const capturedGcashRef = paymentRef
+        const capturedTable = tableNumber.trim()
         const cartItems = items
         const payload = {
           idempotency_key: idempotencyKeyRef.current,
@@ -344,6 +347,7 @@ export default function POSPage() {
           customer_id: selectedCustomer?.id,
           amount_tendered: paymentMethod === 'cash' ? parseFloat(capturedTendered) || null : null,
           discount_type: discountType,
+          table_number: capturedTable || undefined,
         }
         // Server-matching totals (subtotal incl. addons, tax, discount, grand)
         // are informational for the local receipt only; the server recomputes
@@ -378,6 +382,7 @@ export default function POSPage() {
           setPaymentRef('')
           setAmountTendered('')
           setDiscountType(null)
+          setTableNumber('')
           setShowCheckout(false)
 
           const finalTendered = paymentMethod === 'cash' ? parseFloat(capturedTendered) || grand : grand
@@ -396,6 +401,7 @@ export default function POSPage() {
             date: new Date().toISOString(),
             amountTendered: finalTendered,
             change: Math.max(0, finalTendered - grand),
+            tableNumber: capturedTable || null,
           }
           setReceiptData(rc)
           try {
@@ -405,7 +411,7 @@ export default function POSPage() {
           const foodItems = cartItems.filter(i => menuData.items.find(m => m.id === i.menu_item_id)?.send_to_kds)
             .map(i => ({ name: i.name, qty: i.quantity, variantName: i.variant_name, addons: i.addons.map(a => a.name) }))
           if (foodItems.length > 0) {
-            try { await printKitchenTicket(ref, foodItems) } catch { /* best-effort */ }
+            try { await printKitchenTicket(ref, foodItems, capturedTable || null) } catch { /* best-effort */ }
           }
 
           if (paymentMethod === 'cash') {
@@ -450,6 +456,7 @@ export default function POSPage() {
         setPaymentRef('')
         setAmountTendered('')
         setDiscountType(null)
+        setTableNumber('')
         setShowCheckout(false)
         const finalTendered = paymentMethod === 'cash' ? parseFloat(capturedTendered) || result.grand_total : result.grand_total
         const rc = {
@@ -467,11 +474,17 @@ export default function POSPage() {
           date: new Date().toISOString(),
           amountTendered: finalTendered,
           change: Math.max(0, finalTendered - result.grand_total),
+          tableNumber: capturedTable || null,
         }
         setReceiptData(rc)
         try {
           if (getAutoPrint()) await printReceipt(toPrinterReceipt(rc))
         } catch { /* auto-print best-effort */ }
+        const foodItems = cartItems.filter(i => menuData.items.find(m => m.id === i.menu_item_id)?.send_to_kds)
+          .map(i => ({ name: i.name, qty: i.quantity, variantName: i.variant_name, addons: i.addons.map(a => a.name) }))
+        if (foodItems.length > 0) {
+          try { await printKitchenTicket(result.order_number, foodItems, capturedTable || null) } catch { /* best-effort */ }
+        }
         if (paymentMethod === 'cash') {
           try { await openCashDrawer() } catch { /* drawer best-effort */ }
         }
@@ -590,7 +603,7 @@ export default function POSPage() {
                 <button onClick={() => { setShowCheckout(!showCheckout); if (!showCheckout) { getCustomers().then(cs => { setAllCustomers(cs); offlineStore.setCustomers(cs) }).catch(() => { setAllCustomers(offlineStore.getCustomers() as any) }) } }} className="w-full bg-accent text-white py-2 rounded-lg font-medium hover:opacity-90 active:scale-95 transition-all duration-100">
                   {showCheckout ? 'Back' : 'Checkout'}
                 </button>
-                <button onClick={() => { clearCart(); idempotencyKeyRef.current = crypto.randomUUID(); setShowCheckout(false); setSelectedCustomer(null); setShowCustomerSelect(false); setAmountTendered(''); setPaymentRef(''); setDiscountType(null) }} className="w-full bg-muted text-foreground py-2 rounded-lg font-medium hover:bg-muted/80 active:scale-95 transition-all duration-100 flex items-center justify-center gap-2">
+                <button onClick={() => { clearCart(); idempotencyKeyRef.current = crypto.randomUUID(); setShowCheckout(false); setSelectedCustomer(null); setShowCustomerSelect(false); setTableNumber(''); setAmountTendered(''); setPaymentRef(''); setDiscountType(null) }} className="w-full bg-muted text-foreground py-2 rounded-lg font-medium hover:bg-muted/80 active:scale-95 transition-all duration-100 flex items-center justify-center gap-2">
                   <Trash2 className="w-4 h-4" /> Clear Cart
                 </button>
               </div>
@@ -633,6 +646,30 @@ export default function POSPage() {
                       + Select Customer
                     </button>
                   )}
+                </div>
+
+                {/* Table Number */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-medium">Table No. (optional)</label>
+                    {tableNumber && (
+                      <button
+                        type="button"
+                        onClick={() => setTableNumber('')}
+                        className="text-[11px] text-muted-foreground hover:text-foreground"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="e.g. 5, Takeout, Balcony 2..."
+                    value={tableNumber}
+                    onChange={e => setTableNumber(e.target.value)}
+                    maxLength={30}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
                 </div>
 
                 <div>
@@ -757,7 +794,12 @@ export default function POSPage() {
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mt-1">This is not an official receipt</p>
               <p className="text-xs text-gray-500 mt-1">{new Date(receiptData.date).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</p>
               <p className="text-lg font-semibold mt-2 text-gray-800">{receiptData.orderNumber}</p>
-              {receiptData.customerName && <p className="text-sm text-gray-500">Customer: {receiptData.customerName}</p>}
+              {receiptData.tableNumber && (
+                <p className="text-xs font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded inline-block mt-1">
+                  Table: {receiptData.tableNumber}
+                </p>
+              )}
+              {receiptData.customerName && <p className="text-sm text-gray-500 mt-1">Customer: {receiptData.customerName}</p>}
             </div>
 
             {/* Items */}

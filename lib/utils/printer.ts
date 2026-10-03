@@ -75,6 +75,7 @@ export interface ReceiptData {
   points?: number
   pointsBalance?: number
   discountLabel?: string
+  tableNumber?: string | null
 }
 
 export async function pairPrinter(): Promise<boolean> {
@@ -165,6 +166,7 @@ function buildReceipt(data: ReceiptData): Uint8Array {
   parts.push(text(dash), feed, left)
 
   parts.push(text(`Order: ${data.orderNumber}`), feed)
+  if (data.tableNumber) { parts.push(bold, text(`Table: ${data.tableNumber}`), feed, normal) }
   parts.push(text(`Date: ${data.date}`), feed)
   parts.push(text(`Cashier: ${data.cashier}`), feed)
   parts.push(text(dash), feed)
@@ -222,7 +224,7 @@ export interface KitchenTicketItem {
   addons?: string[]
 }
 
-function buildKitchenTicket(orderRef: string, items: KitchenTicketItem[]): Uint8Array {
+function buildKitchenTicket(orderRef: string, items: KitchenTicketItem[], tableNumber?: string | null): Uint8Array {
   const center = bytes(0x1B, 0x61, 1)
   const left = bytes(0x1B, 0x61, 0)
   const bold = bytes(0x1B, 0x45, 1)
@@ -234,6 +236,9 @@ function buildKitchenTicket(orderRef: string, items: KitchenTicketItem[]): Uint8
   const parts: Uint8Array[] = []
   parts.push(center, bold, text('KITCHEN TICKET'), feed, normal)
   parts.push(text(orderRef), feed)
+  if (tableNumber) {
+    parts.push(bold, text(`TABLE: ${tableNumber}`), feed, normal)
+  }
   parts.push(text(new Date().toLocaleString('en-PH')), feed)
   parts.push(text(dash), feed, left)
   for (const it of items) {
@@ -247,13 +252,13 @@ function buildKitchenTicket(orderRef: string, items: KitchenTicketItem[]): Uint8
   return concat(...parts)
 }
 
-export async function printKitchenTicket(orderRef: string, items: KitchenTicketItem[]): Promise<boolean> {
+export async function printKitchenTicket(orderRef: string, items: KitchenTicketItem[], tableNumber?: string | null): Promise<boolean> {
   try {
     if (!isPrinterConnected()) {
       const reconnected = await reconnectPrinter()
       if (!reconnected) return false
     }
-    return await sendRaw(buildKitchenTicket(orderRef, items))
+    return await sendRaw(buildKitchenTicket(orderRef, items, tableNumber))
   } catch {
     return false
   }

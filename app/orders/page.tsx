@@ -66,7 +66,14 @@ export default function OrdersPage() {
           {activeOrders.map(order => (
             <div key={order.id} className={`border rounded-xl p-4 animate-slideInUp ${cardClass(order.created_at)}`}>
               <div className="flex justify-between items-start mb-2">
-                <span className="text-lg font-semibold">{order.order_number}</span>
+                <div>
+                  <span className="text-lg font-semibold">{order.order_number}</span>
+                  {order.table_number && (
+                    <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-500 text-white shadow-sm">
+                      Table {order.table_number}
+                    </span>
+                  )}
+                </div>
                 <span className={`text-xs font-medium ${timeClass(order.created_at)}`}>{elapsed(order.created_at)}</span>
               </div>
               <div className="space-y-1 mb-3">

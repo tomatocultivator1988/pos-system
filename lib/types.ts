@@ -144,6 +144,7 @@ export interface Customer {
   id: string; member_number: string; name: string
   mobile_number?: string; email?: string; loyalty_points_balance: number
   is_active: boolean; created_at: string; updated_at: string
+  visit_count?: number; last_visit_at?: string | null
 }
 
 export interface LoyaltyTransaction {
@@ -155,6 +156,7 @@ export interface LoyaltyTransaction {
 export interface Order {
   id: string; order_number: string; order_sequence_number: number
   cashier_user_id: string; customer_id?: string
+  table_number?: string | null
   status: string; payment_status: string; payment_method: string
   subtotal: number; discount_total: number; tax_total: number; grand_total: number
   loyalty_points_earned: number; notes?: string

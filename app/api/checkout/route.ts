@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
         // Client-sent sold_* totals are deliberately NOT forwarded — the RPC
         // recomputes all money server-side (see migration 00015).
         discount_type: body.discount_type || null,
+        table_number: typeof body.table_number === 'string' && body.table_number.trim() ? body.table_number.trim() : null,
       },
       p_actor_user_id: session.user_id,
       p_idempotency_key: idempotencyKey,
